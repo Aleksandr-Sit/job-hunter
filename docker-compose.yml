@@ -5,6 +5,8 @@ services:
     build: .
     restart: unless-stopped
     env_file: .env
+    environment:
+      - PYTHONUTF8=1
     volumes:
       # Персистентные данные: SQLite, логи, Telegram-сессия
       - ./data:/app/data
