@@ -34,6 +34,8 @@ _GROQ_RETRY_SLEEP = 20  # секунды между попытками
 _SYSTEM_INSTRUCTION = """\
 You are a job matching assistant. Evaluate each job listing against the candidate profile and score the fit from 0 to 100.
 
+IMPORTANT: Write ALL text fields (why_fits, watch_out, recommendation) in RUSSIAN language only. No English in these fields.
+
 Scoring guide:
 - 90–100: perfect match — role, domain, skills, format all align
 - 75–89: strong match with 1–2 minor gaps
@@ -46,9 +48,9 @@ Respond ONLY with a valid JSON array, no markdown, no extra text:
   {
     "id": "job_id",
     "score": 85,
-    "why_fits": ["reason 1", "reason 2"],
-    "watch_out": ["gap 1"],
-    "recommendation": "One concrete action sentence"
+    "why_fits": ["причина на русском", "ещё причина"],
+    "watch_out": ["нюанс на русском"],
+    "recommendation": "Одно конкретное действие при отклике — на русском"
   }
 ]"""
 

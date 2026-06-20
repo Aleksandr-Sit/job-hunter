@@ -1,15 +1,15 @@
-"""Форматирует вакансию + результат матчинга в красивое HTML-сообщение для Telegram."""
+"""Форматирует вакансию + результат матчинга в Telegram HTML-сообщение."""
 import re
 from ..models import Job, MatchResult
 
+_DIV = "─" * 22
+
 
 def _strip_html(text: str) -> str:
-    """Убирает все HTML-теги — Telegram поддерживает только b, i, a, code, pre."""
     return re.sub(r"<[^>]+>", "", text).strip()
 
 
 def _esc(text: str) -> str:
-    """HTML-экранирование для Telegram HTML-режима."""
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
@@ -23,53 +23,51 @@ def _score_emoji(score: int) -> str:
     return "👀"
 
 
-def _salary_line(job: Job) -> str:
-    if not job.salary_min and not job.salary_max:
-        return ""
-    lo = f"{job.salary_min:,}" if job.salary_min else ""
-    hi = f"{job.salary_max:,}" if job.salary_max else ""
-    rng = f"{lo}–{hi}" if lo and hi else (lo or hi)
-    return f"💰 <b>{rng} {job.salary_currency}</b>"
-
-
-def _source_line(job: Job) -> str:
-    remote = " • Remote 🌍" if job.is_remote else ""
-    return f"📍 {job.source}{remote}"
+def _meta_line(job: Job) -> str:
+    parts = [f"<b>{_esc(job.company)}</b>"]
+    if job.is_remote:
+        parts.append("Remote")
+    if job.location and job.location.lower() not in ("remote", "anywhere", ""):
+        parts.append(_esc(job.location))
+    if job.salary_min or job.salary_max:
+        lo = f"{job.salary_min:,}" if job.salary_min else ""
+        hi = f"{job.salary_max:,}" if job.salary_max else ""
+        rng = f"{lo}–{hi}" if lo and hi else lo or hi
+        parts.append(f"💰 {rng} {job.salary_currency}")
+    return "  ·  ".join(parts)
 
 
 def format_job_message(job: Job, match: MatchResult) -> str:
     emoji = _score_emoji(match.score)
-    salary = _salary_line(job)
-    source = _source_line(job)
+    meta = _meta_line(job)
 
-    fits_lines = "\n".join(f"  • {_esc(r)}" for r in match.why_fits[:4])
-    watch_lines = "\n".join(f"  • {_esc(r)}" for r in match.watch_out[:3])
+    fits = "\n".join(f"· {_esc(r)}" for r in match.why_fits[:4])
+    fits_block = f"✅ <b>Почему подходит</b>\n{fits}" if fits else ""
 
-    fits_block = f"\n✅ <b>Почему подходит:</b>\n{fits_lines}" if fits_lines else ""
-    watch_block = f"\n⚠️ <b>Обратить внимание:</b>\n{watch_lines}" if watch_lines else ""
-    rec_block = f"\n\n💡 {_esc(match.recommendation)}" if match.recommendation else ""
+    watch = "\n".join(f"· {_esc(r)}" for r in match.watch_out[:2])
+    watch_block = f"⚠️ <b>Учесть</b>\n{watch}" if watch else ""
 
-    desc = _esc(_strip_html(job.description)[:400])
-    if len(job.description) > 400:
-        desc += "…"
+    sections = [s for s in [fits_block, watch_block] if s]
+    middle = f"\n\n{_DIV}\n\n".join(sections)
 
-    return (
-        f"{emoji} <b>{_esc(job.title)}</b> — <b>{match.score}/100</b>\n\n"
-        f"🏢 {_esc(job.company)}\n"
-        f"{salary}\n"
-        f"{source}\n\n"
-        f"📋 <i>{desc}</i>"
-        f"{fits_block}"
-        f"{watch_block}"
-        f"{rec_block}"
-    ).strip()
+    rec = f"<i>💬 {_esc(match.recommendation)}</i>" if match.recommendation else ""
+    footer = f"<code>{match.score}/100</code>  ·  {_esc(job.source)}"
+
+    blocks = [
+        f"{emoji} <b>{_esc(job.title)}</b>\n{meta}",
+        middle,
+        rec,
+        footer,
+    ]
+
+    return f"\n{_DIV}\n\n".join(b for b in blocks if b).strip()
 
 
 def format_daily_summary(count_parsed: int, count_sent: int, sources: list[str]) -> str:
     src_list = ", ".join(sources) if sources else "—"
     return (
-        f"📊 <b>Дневной отчёт Job Hunter</b>\n\n"
-        f"🔍 Просмотрено вакансий: <b>{count_parsed}</b>\n"
-        f"📨 Отправлено подходящих: <b>{count_sent}</b>\n"
+        f"📊 <b>Job Hunter — итоги</b>\n\n"
+        f"🔍 Просмотрено: <b>{count_parsed}</b>\n"
+        f"📨 Отправлено: <b>{count_sent}</b>\n"
         f"📡 Источники: {src_list}"
     )
