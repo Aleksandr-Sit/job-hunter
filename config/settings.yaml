@@ -1,0 +1,75 @@
+# Основные настройки Job Hunter
+
+matching:
+  threshold: 65          # минимальный score для отправки в Telegram
+  batch_size: 5          # вакансий за один запрос к Groq (500 chars × 5 ≈ 3k токенов/батч)
+  model: "llama-3.3-70b-versatile"  # задаётся через GROQ_MODEL в .env
+
+scheduler:
+  interval_minutes: 60   # как часто запускать парсинг
+  # Или задай cron-выражение:
+  # cron: "0 9,13,18 * * *"  # 3 раза в день: 9:00, 13:00, 18:00
+
+parsers:
+  hh:
+    enabled: true
+    search_queries:
+      - "Web3 специалист"
+      - "Crypto operations"
+      - "Web3 QA"
+      - "DeFi operations"
+      - "Blockchain operations"
+      - "Web3 support"
+      - "AI automation"
+    area: 113            # 113 = Россия (все регионы)
+    per_page: 50
+    only_with_salary: false
+
+  remoteok:
+    enabled: true
+    tags: []             # [] = все вакансии, или ["python", "backend"]
+
+  cryptojoblist:
+    enabled: true
+
+  web3career:
+    enabled: false      # 403 Forbidden на все запросы, включая RSS
+
+  wellfound:
+    enabled: false       # требует аккаунт, пока отключено
+
+  laborx:
+    enabled: true
+
+  remote3:
+    enabled: true
+
+  contra:
+    enabled: false       # фриланс-платформа, включи если нужно
+
+  greenhouse:
+    enabled: true
+    companies:
+      # Биржи (подтверждены — возвращают вакансии)
+      - { slug: "okx",             name: "OKX" }           # 248 вакансий
+      - { slug: "gemini",          name: "Gemini" }         # 27 вакансий
+      # Инфраструктура / кастодия
+      - { slug: "fireblocks",      name: "Fireblocks" }     # 47 вакансий
+      - { slug: "ripple",          name: "Ripple" }         # 127 вакансий
+      - { slug: "consensys",       name: "Consensys" }      # 11 вакансий
+      # Мониторим (сейчас 0 вакансий, но компания активна на Greenhouse)
+      - { slug: "coinbase",        name: "Coinbase" }
+
+  lever:
+    enabled: true
+    companies:
+      # Подтверждены на Lever
+      - { slug: "kraken",          name: "Kraken" }
+      - { slug: "celestia",        name: "Celestia" }
+
+  telegram:
+    enabled: true        # требует Pyrogram API_ID + API_HASH
+
+logging:
+  level: "INFO"
+  file: "data/logs/job-hunter.log"

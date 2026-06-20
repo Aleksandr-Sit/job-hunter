@@ -1,0 +1,69 @@
+{
+  "web3_blockchain": [
+    {"name": "Web3 / DeFi operations", "level": "expert", "years": 5},
+    {"name": "On-chain transactions (swaps, bridges, staking, LP)", "level": "expert", "years": 5},
+    {"name": "EVM networks", "level": "expert", "years": 5},
+    {"name": "Wallet management (hot/cold)", "level": "expert", "years": 5},
+    {"name": "Blockchain explorers (Etherscan, etc.)", "level": "expert", "years": 5},
+    {"name": "CEX/DEX operations", "level": "expert", "years": 5},
+    {"name": "Transaction verification", "level": "advanced", "years": 4},
+    {"name": "Smart contract interaction", "level": "advanced", "years": 4},
+    {"name": "Gas / slippage management", "level": "advanced", "years": 4},
+    {"name": "Wallet security", "level": "advanced", "years": 4},
+    {"name": "Non-EVM networks (Solana, Starknet)", "level": "intermediate", "years": 3}
+  ],
+  "wallets": [
+    "MetaMask", "Rabby", "Phantom", "Solflare",
+    "Ledger", "Tonkeeper", "Keplr", "TronLink", "Exodus"
+  ],
+  "networks": [
+    "Ethereum", "Arbitrum", "Base", "BNB Chain",
+    "Solana", "zkSync", "Starknet", "Linea", "Mantle"
+  ],
+  "defi_protocols": [
+    "Uniswap", "Stargate", "Jupiter", "Lido",
+    "PancakeSwap", "Compound", "Curve", "Rhino", "Across"
+  ],
+  "exchanges": [
+    "Binance", "OKX", "Bybit", "KuCoin", "HTX", "Gate.io", "Bitget"
+  ],
+  "analytics_tools": [
+    "DeBank", "Etherscan", "TradingView",
+    "CoinMarketCap", "Messari", "DropsTab"
+  ],
+  "qa_testing": [
+    {"name": "Manual testing", "level": "intermediate"},
+    {"name": "Web3 / dApps testing", "level": "intermediate"},
+    {"name": "Wallet testing", "level": "advanced"},
+    {"name": "Bug reporting", "level": "intermediate"},
+    {"name": "User experience testing", "level": "intermediate"},
+    {"name": "Transaction flow testing", "level": "advanced"}
+  ],
+  "ai_automation": [
+    {"name": "ChatGPT", "level": "intermediate"},
+    {"name": "Grok", "level": "intermediate"},
+    {"name": "Claude / Claude Code", "level": "beginner"},
+    {"name": "n8n", "level": "beginner"},
+    {"name": "Telegram API integrations", "level": "beginner"},
+    {"name": "AI-assisted workflows", "level": "intermediate"},
+    {"name": "Prompt engineering", "level": "beginner"}
+  ],
+  "operations_support": [
+    {"name": "Technical support", "level": "intermediate"},
+    {"name": "CRM systems", "level": "intermediate"},
+    {"name": "Customer support", "level": "advanced"},
+    {"name": "Discord community", "level": "intermediate"},
+    {"name": "Process documentation", "level": "intermediate"},
+    {"name": "SLA compliance", "level": "intermediate"}
+  ],
+  "domains": [
+    "Web3 / Crypto",
+    "DeFi",
+    "Blockchain Operations",
+    "Digital Assets",
+    "AI Automation",
+    "Crypto Operations",
+    "Web3 QA",
+    "Community Support"
+  ]
+}

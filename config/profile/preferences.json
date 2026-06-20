@@ -1,0 +1,88 @@
+{
+  "roles": [
+    "Web3 QA Tester",
+    "Web3 Operations Specialist",
+    "Crypto Operations Specialist",
+    "DeFi Operations Specialist",
+    "Web3 Support Specialist",
+    "AI Operations Assistant",
+    "Web3 Community Specialist",
+    "Digital Asset Operations",
+    "Blockchain Operations Specialist",
+    "AI Automation Specialist"
+  ],
+  "salary": {
+    "min_rub_monthly": 150000,
+    "preferred_rub_monthly": 250000,
+    "min_usd_monthly": 1500,
+    "preferred_usd_monthly": 3000,
+    "currency_preference": ["USD", "USDT", "RUB"]
+  },
+  "work_format": {
+    "remote": true,
+    "hybrid": true,
+    "onsite": true
+  },
+  "employment_type": [
+    "full-time",
+    "contract",
+    "part-time"
+  ],
+  "locations_ok": [
+    "Remote",
+    "Russia",
+    "Greece",
+    "Cyprus",
+    "Thailand",
+    "Turkey",
+    "CIS"
+  ],
+  "tech_stack_must": [
+    "Web3",
+    "Blockchain",
+    "DeFi",
+    "Crypto"
+  ],
+  "tech_stack_nice": [
+    "EVM",
+    "Ethereum",
+    "Solana",
+    "MetaMask",
+    "Wallet",
+    "On-chain",
+    "DeFi protocol",
+    "CEX",
+    "DEX",
+    "QA",
+    "Testing",
+    "Operations",
+    "Support",
+    "AI automation",
+    "n8n",
+    "Telegram",
+    "Community",
+    "Discord",
+    "Manual testing",
+    "dApps",
+    "NFT"
+  ],
+  "industries_preferred": [
+    "Web3 / Crypto",
+    "DeFi",
+    "Blockchain",
+    "AI Automation",
+    "Digital Assets",
+    "Fintech"
+  ],
+  "industries_avoid": [
+    "Gambling",
+    "Adult content"
+  ],
+  "experience_level": "mid",
+  "open_to_startup": true,
+  "open_to_equity": true,
+  "open_to_relocation": true,
+  "relocation_countries": ["Greece", "Cyprus", "Thailand", "Turkey"],
+  "english_level": "A2",
+  "notes": "Ищет международную удалённую работу в web3/crypto. Сильная сторона — глубокое практическое знание DeFi-экосистемы и blockchain-операций. Изучает AI-автоматизацию и n8n. Готов к релокации в Грецию, Кипр, Таиланд, Турцию."
+}
