@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import yaml
 
 from ..base import BaseParser
@@ -48,7 +50,10 @@ class GreenhouseParser(BaseParser):
 
     def _fetch_company(self, slug: str, company_name: str) -> list[Job]:
         url = _API_BASE.format(slug=slug)
-        resp = requests.get(url, headers=_HEADERS, params={"content": "true"}, timeout=20)
+        session = requests.Session()
+        retry = Retry(total=3, backoff_factor=1, status_forcelist=[502, 503, 504])
+        session.mount("https://", HTTPAdapter(max_retries=retry))
+        resp = session.get(url, headers=_HEADERS, params={"content": "true"}, timeout=20)
         if resp.status_code == 404:
             logger.warning("Greenhouse: %s not found (404)", slug)
             return []
