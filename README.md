@@ -5,7 +5,7 @@ Automated job search system for Web3/DeFi operations roles. Parses 10+ sources e
 ## How it works
 
 ```
-Sources (834 jobs/run)
+Sources (1000+ jobs/run)
     │
     ▼
 Pre-filter — removes senior/director/dev roles, 6+ years exp, coding requirements
@@ -103,12 +103,20 @@ TELEGRAM_CHAT_ID=...            # @userinfobot
 - `config/profile/skills.json` — skills and levels
 - `config/profile/preferences.json` — target roles, salary, stack
 
-**4. Run**
+**4a. Run natively**
 ```bash
 python -m src.scheduler
 ```
 
-Runs every 60 minutes. On first launch waits for proxy/network (up to 3 min).
+**4b. Run with Docker**
+```bash
+docker compose up -d
+docker compose logs -f   # watch logs
+```
+
+> **Important — switching from native to Docker:** If you previously ran the bot natively, SQLite may have left `data/jobs.db-wal` and `data/jobs.db-shm` files. These cause a `disk I/O error` inside Docker. Before the first `docker compose up`, stop any running Python processes and delete those two files if they exist.
+
+Runs every 60 minutes. Restarts automatically on failure (`restart: unless-stopped`).
 
 ## Auto-start on Windows
 
