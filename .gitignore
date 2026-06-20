@@ -1,0 +1,26 @@
+# Секреты — никогда не коммитить
+.env
+
+# Данные и логи (локальные, личные)
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+
+# Telegram Pyrogram сессии
+*.session
+*.session-journal
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

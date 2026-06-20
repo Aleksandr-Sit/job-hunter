@@ -1,0 +1,37 @@
+# Список источников вакансий
+
+telegram_channels:
+  # Только публичные каналы (проверено t.me/s/ — возвращают посты)
+  - remote_jobs_ru       # 20 постов
+  - cryptoheadhunter     # 20 постов — crypto HR
+  - holder_job_devs      # 19 постов — web3/dev вакансии
+  - remoteweb3jobs       # 20 постов — remote web3
+  - workers_tg           # 20 постов
+  - cryptovakansii       # 20 постов — крипто вакансии RU
+  - workingincrypto      # 20 постов — EN crypto jobs
+  - opento_crypto        # 20 постов
+  - cryptojobslist       # 14 постов
+  - cryptojobsh          # 20 постов
+  # Не работают (приватные или нет публичного preview):
+  # - pythonru, django_jobs, it_jobs_world, crypto_jobs_channel
+  # - web3_jobs_channel, ru_holder
+
+company_career_pages:
+  # Сайты конкретных компаний (если нужно мониторить careers-страницы)
+  # - name: "Yandex"
+  #   url: "https://yandex.ru/jobs/vacancies/"
+  #   selector: ".vacancy-card"
+
+web_job_boards:
+  remoteok:
+    url: "https://remoteok.com/api"
+  cryptojoblist:
+    url: "https://cryptojobslist.com/jobs.json"
+  web3career:
+    url: "https://web3.career"
+  laborx:
+    url: "https://laborx.com/vacancies"
+  remote3:
+    url: "https://remote3.co/web3-jobs"
+  wellfound:
+    url: "https://wellfound.com/jobs"

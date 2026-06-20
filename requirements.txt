@@ -1,0 +1,21 @@
+# AI матчинг (Together AI — OpenAI-совместимый, без геоблока для РФ)
+openai>=1.0.0
+
+# HTTP & scraping
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
+
+# Telegram bot (отправка уведомлений)
+python-telegram-bot>=21.0
+
+# Telegram parser (чтение каналов)
+pyrogram>=2.0.106
+# tgcrypto>=1.2.5  # optional: faster crypto, needs C++ Build Tools
+
+# Scheduler
+APScheduler>=3.10.0
+
+# Config
+PyYAML>=6.0
+python-dotenv>=1.0.0
