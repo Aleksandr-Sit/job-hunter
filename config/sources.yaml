@@ -12,6 +12,7 @@ telegram_channels:
   - opento_crypto        # 20 постов
   - cryptojobslist       # 14 постов
   - cryptojobsh          # 20 постов
+  - web3vacancy          # 20 постов — web3 вакансии EN
   # Не работают (приватные или нет публичного preview):
   # - pythonru, django_jobs, it_jobs_world, crypto_jobs_channel
   # - web3_jobs_channel, ru_holder

@@ -21,6 +21,11 @@ parsers:
       - "Blockchain operations"
       - "Web3 support"
       - "AI automation"
+      - "Crypto community manager"
+      - "Web3 менеджер"
+      - "Digital asset operations"
+      - "On-chain аналитик"
+      - "Web3 аналитик"
     area: 113            # 113 = Россия (все регионы)
     per_page: 50
     only_with_salary: false
@@ -50,22 +55,35 @@ parsers:
   greenhouse:
     enabled: true
     companies:
-      # Биржи (подтверждены — возвращают вакансии)
-      - { slug: "okx",             name: "OKX" }           # 248 вакансий
-      - { slug: "gemini",          name: "Gemini" }         # 27 вакансий
+      # Биржи
+      - { slug: "okx",             name: "OKX" }           # ~250 вакансий
+      - { slug: "gemini",          name: "Gemini" }         # ~27 вакансий
       # Инфраструктура / кастодия
-      - { slug: "fireblocks",      name: "Fireblocks" }     # 47 вакансий
-      - { slug: "ripple",          name: "Ripple" }         # 127 вакансий
-      - { slug: "consensys",       name: "Consensys" }      # 11 вакансий
-      # Мониторим (сейчас 0 вакансий, но компания активна на Greenhouse)
-      - { slug: "coinbase",        name: "Coinbase" }
+      - { slug: "fireblocks",      name: "Fireblocks" }     # ~58 вакансий
+      - { slug: "ripple",          name: "Ripple" }         # ~159 вакансий
+      - { slug: "consensys",       name: "Consensys" }      # ~10 вакансий
+      - { slug: "coinbase",        name: "Coinbase" }       # ~100 вакансий
+      # Добавлены (проверены через API)
+      - { slug: "bitgo",           name: "BitGo" }          # ~46 вакансий
+      - { slug: "bitpanda",        name: "Bitpanda" }       # ~47 вакансий
 
   lever:
     enabled: true
     companies:
-      # Подтверждены на Lever
+      # Биржи / крупные игроки
       - { slug: "kraken",          name: "Kraken" }
+      - { slug: "binance",         name: "Binance" }        # ~361 вакансия
+      # Инфраструктура / кастодия
       - { slug: "celestia",        name: "Celestia" }
+      - { slug: "anchorage",       name: "Anchorage Digital" }  # ~49 вакансий
+      # Fintech / payments
+      - { slug: "moonpay",         name: "MoonPay" }        # ~14 вакансий
+      # DeFi / протоколы
+      - { slug: "safe",            name: "Safe" }           # ~16 вакансий
+      - { slug: "gauntlet",        name: "Gauntlet" }       # ~6 вакансий
+      - { slug: "1inch",           name: "1inch" }          # ~4 вакансии
+      # Гейминг / NFT
+      - { slug: "animocabrands",   name: "Animoca Brands" } # ~6 вакансий
 
   telegram:
     enabled: true        # требует Pyrogram API_ID + API_HASH
