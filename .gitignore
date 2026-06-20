@@ -2,7 +2,10 @@
 .env
 
 # Данные и логи (локальные, личные)
-data/
+data/*
+!data/logs/
+data/logs/*
+!data/logs/.gitkeep
 
 # Python
 __pycache__/
