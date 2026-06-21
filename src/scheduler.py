@@ -53,6 +53,7 @@ def _build_parsers(cfg: dict) -> list:
     from .parsers.web.contra import ContraParser
     from .parsers.web.greenhouse import GreenhouseParser
     from .parsers.web.lever import LeverParser
+    from .parsers.web.linkedin import LinkedInParser
 
     parsers_cfg = cfg.get("parsers", {})
     parsers = []
@@ -77,6 +78,8 @@ def _build_parsers(cfg: dict) -> list:
         parsers.append(GreenhouseParser())
     if parsers_cfg.get("lever", {}).get("enabled", True):
         parsers.append(LeverParser())
+    if parsers_cfg.get("linkedin", {}).get("enabled", False):
+        parsers.append(LinkedInParser())
     if parsers_cfg.get("telegram", {}).get("enabled", True):
         parsers.append(TelegramParser())
 

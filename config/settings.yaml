@@ -85,6 +85,19 @@ parsers:
       # Гейминг / NFT
       - { slug: "animocabrands",   name: "Animoca Brands" } # ~6 вакансий
 
+  linkedin:
+    enabled: true
+    hours_old: 72        # вакансии не старше 3 дней
+    results_per_query: 30
+    queries:
+      - "crypto operations"
+      - "web3 operations"
+      - "DeFi operations"
+      - "blockchain operations"
+      - "digital asset operations"
+      - "crypto community manager"
+      - "web3 analyst"
+
   telegram:
     enabled: true        # требует Pyrogram API_ID + API_HASH
 
