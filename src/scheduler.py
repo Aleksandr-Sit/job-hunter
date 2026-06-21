@@ -177,19 +177,31 @@ def _wait_for_network(timeout: int = 180) -> None:
 
 def main() -> None:
     cfg = _load_config()
-    interval = cfg.get("scheduler", {}).get("interval_minutes", 60)
+    sched_cfg = cfg.get("scheduler", {})
 
     logger.info("Job Hunter starting. Waiting for network...")
     _wait_for_network(timeout=180)
 
-    logger.info("Job Hunter running. Interval: %d min", interval)
-    send_text("🤖 <b>Job Hunter запущен</b>\nБуду присылать подходящие вакансии.")
+    scheduler = BlockingScheduler(timezone="UTC")
+
+    cron_expr = sched_cfg.get("cron")
+    if cron_expr:
+        # "0 6,14 * * *" → minute=0, hour=6,14, ...
+        parts = cron_expr.split()
+        scheduler.add_job(run_once, "cron",
+                          minute=parts[0], hour=parts[1],
+                          day=parts[2], month=parts[3], day_of_week=parts[4])
+        logger.info("Job Hunter running. Schedule (UTC): %s", cron_expr)
+        send_text(f"🤖 <b>Job Hunter запущен</b>\nРасписание: {cron_expr} UTC")
+    else:
+        interval = sched_cfg.get("interval_minutes", 60)
+        scheduler.add_job(run_once, "interval", minutes=interval)
+        logger.info("Job Hunter running. Interval: %d min", interval)
+        send_text(f"🤖 <b>Job Hunter запущен</b>\nИнтервал: каждые {interval} мин.")
 
     # Первый запуск сразу
     run_once()
 
-    scheduler = BlockingScheduler(timezone="UTC")
-    scheduler.add_job(run_once, "interval", minutes=interval)
     scheduler.start()
 
 
