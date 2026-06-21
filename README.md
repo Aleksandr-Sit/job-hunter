@@ -5,7 +5,7 @@ Automated job search system for Web3/DeFi operations roles. Parses 10+ sources e
 ## How it works
 
 ```
-Sources (1000+ jobs/run)
+Sources (1600+ jobs/run)
     │
     ▼
 Pre-filter — removes senior/director/dev roles, 6+ years exp, coding requirements
@@ -14,19 +14,19 @@ Pre-filter — removes senior/director/dev roles, 6+ years exp, coding requireme
 AI Matching — Cerebras LLM scores each job 0–100 against your profile
     │
     ▼
-Telegram — sends only jobs with score ≥ 65, sorted by relevance
+Telegram — sends only jobs with score ≥ 65, in Russian, sorted by relevance
 ```
 
 ## Sources
 
 | Source | Type | Jobs/run |
 |--------|------|----------|
-| OKX, Coinbase, Consensys, Ripple, Gemini, Fireblocks | Greenhouse API | ~400 |
-| Kraken, Celestia | Lever API | ~10 |
-| HH.ru | RSS (7 queries) | ~90 |
+| OKX, Coinbase, Ripple, Gemini, Fireblocks, Consensys, BitGo, Bitpanda | Greenhouse API | ~700 |
+| Binance, Kraken, Anchorage Digital, MoonPay, Safe, Gauntlet, 1inch, Animoca Brands, Celestia | Lever API | ~460 |
+| HH.ru | REST API (12 queries) | ~120 |
 | RemoteOK | JSON API | ~100 |
-| CryptoJobsList, LaborX, Remote3 | Web scraping | ~80 |
-| 10 Telegram channels | t.me/s/ scraping | ~190 |
+| CryptoJobsList, LaborX, Remote3 | Web scraping | ~100 |
+| 11 Telegram channels | t.me/s/ scraping | ~210 |
 
 ## AI Matching
 
@@ -53,22 +53,27 @@ Automatically excluded:
 ## Telegram notification format
 
 ```
-🎯 Crypto Operations Manager — 87/100
+🎯 Crypto Operations Manager
+Binance  ·  Remote  ·  💰 3000–5000 USDT
 
-🏢 Binance
-💰 $3000–5000 / мес · Remote
-📍 cryptojobslist.com
+──────────────────────
 
-Why fits:
-• CEX/DEX operations matches core experience
-• Binance/OKX tools required — direct match
+✅ Почему подходит
+· Опыт с CEX/DEX операциями — прямое совпадение
+· Знание инструментов Binance и OKX
 
-Watch out:
-• Team lead responsibilities mentioned
+──────────────────────
 
-Apply highlighting CEX trading ops and on-chain monitoring experience.
+⚠️ Учесть
+· Упоминаются обязанности тимлида
 
-🔗 Open vacancy
+──────────────────────
+
+💬 Укажи опыт торговых операций на CEX и мониторинга on-chain активности.
+
+──────────────────────
+
+87/100  ·  cryptojobslist.com
 ```
 
 ## Setup
@@ -118,9 +123,30 @@ docker compose logs -f   # watch logs
 
 Runs every 60 minutes. Restarts automatically on failure (`restart: unless-stopped`).
 
-## Auto-start on Windows
+## Deploy to VPS (recommended)
 
-The included `start-job-hunter.bat` can be added to Windows Task Scheduler or Startup folder to run automatically on PC start.
+Running on a VPS means the bot works 24/7 without your PC being on.
+
+**Requirements:** Ubuntu 22.04+, Docker, SSH access.
+
+```bash
+# 1. Install Docker on server
+curl -fsSL https://get.docker.com | sh && systemctl enable docker
+
+# 2. Clone repo
+git clone https://github.com/Aleksandr-Sit/job-hunter.git /opt/job-hunter
+mkdir -p /opt/job-hunter/data/logs
+
+# 3. Copy secrets from local machine (run in local PowerShell)
+scp -i "~/.ssh/your_key" .env root@<SERVER_IP>:/opt/job-hunter/
+scp -i "~/.ssh/your_key" data/tg_session.session root@<SERVER_IP>:/opt/job-hunter/data/
+scp -i "~/.ssh/your_key" data/jobs.db root@<SERVER_IP>:/opt/job-hunter/data/
+
+# 4. Start
+cd /opt/job-hunter && chmod 600 .env && docker compose up -d --build
+```
+
+After deploy the container restarts automatically on server reboot (`restart: unless-stopped`).
 
 ## Project structure
 

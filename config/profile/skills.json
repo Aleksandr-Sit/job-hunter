@@ -14,7 +14,8 @@
   ],
   "wallets": [
     "MetaMask", "Rabby", "Phantom", "Solflare",
-    "Ledger", "Tonkeeper", "Keplr", "TronLink", "Exodus"
+    "Ledger", "Tonkeeper", "Keplr", "TronLink", "Exodus",
+    "Nova", "MathWallet", "Braavos", "Blast Wallet"
   ],
   "networks": [
     "Ethereum", "Arbitrum", "Base", "BNB Chain",
@@ -40,13 +41,24 @@
     {"name": "Transaction flow testing", "level": "advanced"}
   ],
   "ai_automation": [
-    {"name": "ChatGPT", "level": "intermediate"},
+    {"name": "ChatGPT", "level": "advanced"},
     {"name": "Grok", "level": "intermediate"},
-    {"name": "Claude / Claude Code", "level": "beginner"},
-    {"name": "n8n", "level": "beginner"},
-    {"name": "Telegram API integrations", "level": "beginner"},
-    {"name": "AI-assisted workflows", "level": "intermediate"},
-    {"name": "Prompt engineering", "level": "beginner"}
+    {"name": "Claude / Claude Code", "level": "intermediate"},
+    {"name": "AI API integration (Cerebras, Gemini, Groq)", "level": "intermediate"},
+    {"name": "Python automation", "level": "intermediate"},
+    {"name": "Telegram Bot API", "level": "intermediate"},
+    {"name": "Docker / Docker Compose", "level": "intermediate"},
+    {"name": "Prompt engineering", "level": "intermediate"},
+    {"name": "AI-assisted workflows", "level": "advanced"},
+    {"name": "n8n", "level": "beginner"}
+  ],
+  "infrastructure": [
+    {"name": "VPS servers", "level": "intermediate"},
+    {"name": "Proxy management", "level": "intermediate"},
+    {"name": "ADS Power (anti-detect browser)", "level": "advanced"},
+    {"name": "Dolphin Anty (anti-detect browser)", "level": "advanced"},
+    {"name": "Multi-account management", "level": "expert"},
+    {"name": "Linux CLI (basic)", "level": "beginner"}
   ],
   "operations_support": [
     {"name": "Technical support", "level": "intermediate"},
@@ -64,6 +76,10 @@
     "AI Automation",
     "Crypto Operations",
     "Web3 QA",
-    "Community Support"
+    "Community Support",
+    "On-chain Analytics",
+    "Multi-account Infrastructure",
+    "Airdrop Research",
+    "Cross-chain Operations"
   ]
 }
