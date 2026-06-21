@@ -6,9 +6,8 @@ matching:
   model: "llama-3.3-70b-versatile"  # задаётся через GROQ_MODEL в .env
 
 scheduler:
-  interval_minutes: 60   # как часто запускать парсинг
-  # Или задай cron-выражение:
-  # cron: "0 9,13,18 * * *"  # 3 раза в день: 9:00, 13:00, 18:00
+  # interval_minutes: 60
+  cron: "0 6,14 * * *"   # 10:00 и 18:00 по Самаре (UTC+4)
 
 parsers:
   hh:
