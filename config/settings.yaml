@@ -25,6 +25,11 @@ parsers:
       - "Digital asset operations"
       - "On-chain аналитик"
       - "Web3 аналитик"
+      # CIS / Russian-speaking роли
+      - "Менеджер СНГ"
+      - "Комьюнити менеджер крипто"
+      - "Русскоязычная поддержка"
+      - "CIS operations"
     area: 113            # 113 = Россия (все регионы)
     per_page: 50
     only_with_salary: false
@@ -96,6 +101,11 @@ parsers:
       - "digital asset operations"
       - "crypto community manager"
       - "web3 analyst"
+      # CIS / Russian-speaking роли
+      - "CIS community manager crypto"
+      - "Russian speaking crypto operations"
+      - "CIS growth manager web3"
+      - "Russian community web3"
 
   telegram:
     enabled: true        # требует Pyrogram API_ID + API_HASH
