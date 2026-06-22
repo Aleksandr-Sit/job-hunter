@@ -105,6 +105,9 @@ def _load_keywords() -> tuple[set[str], set[str]]:
         "operations", "ops", "qa", "tester", "testing", "support",
         "community", "discord", "airdrop", "protocol", "dapp",
         "ai", "automation", "n8n", "workflow",
+        # CIS / Russian-speaking роли
+        "cis", "снг", "russian-speaking", "русскоязычный",
+        "русскоязычная", "русскоязычные", "russian", "снг-рынок",
     ])
 
     avoid = {i.lower() for i in prefs.get("industries_avoid", [])}
