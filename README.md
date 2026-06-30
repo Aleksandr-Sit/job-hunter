@@ -168,7 +168,7 @@ job-hunter/
 ├── src/
 │   ├── parsers/                # HH.ru, Telegram, Greenhouse, Lever, web boards
 │   ├── matcher/
-│   │   ├── gemini_matcher.py  # Cerebras AI batch matching
+│   │   ├── cerebras_matcher.py # Cerebras AI batch matching
 │   │   └── pre_filter.py      # gate + weighted scoring before AI
 │   ├── bot/                    # Telegram notifications
 │   ├── storage.py              # SQLite: dedup + match cache
