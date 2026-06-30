@@ -2,7 +2,7 @@
 
 matching:
   threshold: 65          # минимальный score для отправки в Telegram
-  batch_size: 5          # вакансий за один запрос к Groq (500 chars × 5 ≈ 3k токенов/батч)
+  batch_size: 5          # вакансий за один запрос к Cerebras (500 chars × 5 ≈ 3k токенов/батч)
 
 scheduler:
   # interval_minutes: 60
@@ -117,7 +117,7 @@ parsers:
       - "n8n developer"
 
   telegram:
-    enabled: true        # требует Pyrogram API_ID + API_HASH
+    enabled: true        # читает t.me/s/<channel> публично, без API-ключей
 
 logging:
   level: "INFO"
