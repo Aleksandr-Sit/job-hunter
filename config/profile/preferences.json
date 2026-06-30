@@ -1,21 +1,17 @@
 {
   "roles": [
+    "Crypto Operations Specialist",
     "Web3 Operations Specialist",
     "DeFi Operations Specialist",
-    "Crypto Operations Specialist",
     "Blockchain Operations Specialist",
     "Digital Asset Operations",
-    "On-chain Analyst",
-    "DeFi Analyst",
-    "Web3 QA Tester",
-    "Protocol Tester",
     "Web3 Support Specialist",
+    "Crypto Support Specialist",
+    "Community Support Specialist (CIS)",
     "AI Automation Specialist",
-    "AI Operations Assistant",
     "Automation Engineer",
-    "Web3 Community Specialist",
-    "Growth Manager Web3",
-    "Node Operator"
+    "No-code Developer",
+    "RPA Developer"
   ],
   "salary": {
     "min_rub_monthly": 150000,
@@ -41,6 +37,9 @@
     "Cyprus",
     "Thailand",
     "Turkey",
+    "Armenia",
+    "UAE",
+    "Serbia",
     "CIS"
   ],
   "tech_stack_must": [
@@ -102,7 +101,7 @@
   "open_to_startup": true,
   "open_to_equity": true,
   "open_to_relocation": true,
-  "relocation_countries": ["Greece", "Cyprus", "Thailand", "Turkey"],
-  "english_level": "A2",
-  "notes": "Ищет международную удалённую работу в web3/crypto или AI-автоматизации. Сильная сторона — 5+ лет глубокого практического знания DeFi-экосистемы, multi-account инфраструктура, cross-chain операции. Строит AI-автоматизации на Python/Docker как портфолио. Готов к entry/mid позициям и релокации в Грецию, Кипр, Таиланд, Турцию."
+  "relocation_countries": ["Greece", "Cyprus", "Thailand", "Turkey", "Armenia", "UAE", "Serbia"],
+  "english_level": "A1-A2",
+  "notes": "Ищет международную удалённую работу в web3/crypto (Operations/Support) или в AI-automation роли в любой индустрии. Сильная сторона — 5+ лет глубокого практического знания DeFi-экосистемы, multi-account инфраструктура, cross-chain операции. С июня 2026 строит AI-автоматизации на Claude Code — два рабочих портфельных проекта (job-hunter, crypto-trader) на Python/Docker, честно начинающий уровень. Готов к entry/mid позициям и релокации в Грецию, Кипр, Таиланд, Турцию, Армению, ОАЭ, Сербию."
 }

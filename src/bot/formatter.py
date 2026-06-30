@@ -37,6 +37,17 @@ def _meta_line(job: Job) -> str:
     return "  ·  ".join(parts)
 
 
+_ROLE_LABELS = {"crypto_ops": "Crypto Ops", "web3_support": "Web3 Support", "ai_automation": "AI Automation"}
+
+
+def _prefilter_line(job: Job) -> str:
+    if not job.match_role:
+        return ""
+    label = _ROLE_LABELS.get(job.match_role, job.match_role)
+    reasons = "; ".join(job.match_reasons[:3])
+    return f"🎯 <i>{_esc(label)} · {_esc(reasons)}</i>" if reasons else f"🎯 <i>{_esc(label)}</i>"
+
+
 def format_job_message(job: Job, match: MatchResult) -> str:
     emoji = _score_emoji(match.score)
     meta = _meta_line(job)
@@ -51,12 +62,14 @@ def format_job_message(job: Job, match: MatchResult) -> str:
     middle = f"\n\n{_DIV}\n\n".join(sections)
 
     rec = f"<i>💬 {_esc(match.recommendation)}</i>" if match.recommendation else ""
+    prefilter = _prefilter_line(job)
     footer = f"<code>{match.score}/100</code>  ·  {_esc(job.source)}"
 
     blocks = [
         f"{emoji} <b>{_esc(job.title)}</b>\n{meta}",
         middle,
         rec,
+        prefilter,
         footer,
     ]
 
