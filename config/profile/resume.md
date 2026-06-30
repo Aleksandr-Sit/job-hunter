@@ -6,7 +6,7 @@
 - **Telegram**: @AIS449
 - **LinkedIn**: linkedin.com/in/aleksandr-sitnikov-web3
 - **Проживает**: Самара, Россия
-- **Готов к переезду**: Греция, Кипр, Таиланд, Турция
+- **Готов к переезду**: Греция, Кипр, Таиланд, Турция, Армения, ОАЭ (Дубай), Сербия
 - **Гражданство**: Россия
 
 ## Профессиональный профиль
@@ -19,21 +19,27 @@ Web3 Operations & AI Automation specialist с 5+ годами практичес
 airdrop-кампании на ранних стадиях проектов. Работал с multi-wallet инфраструктурой (13+ кошельков),
 VPS-серверами, прокси и анти-детект браузерами для управления мультиаккаунтами.
 
-Строю AI-автоматизации: разработал собственный job-hunter — систему на Python с AI-матчингом
-вакансий, Telegram-уведомлениями и Docker-деплоем (GitHub portfolio). Активно применяю
-ChatGPT, Grok, Claude Code в рабочих процессах. Ищу удалённую позицию в международной
-web3/crypto или AI-компании.
+Строю AI-автоматизации с Claude Code (с июня 2026): разработал job-hunter — систему поиска
+вакансий с AI-матчингом — и crypto-trader — мультибиржевую систему торговых ботов. Оба проекта —
+рабочие end-to-end системы на Python с Docker-деплоем на собственных VPS (GitHub portfolio).
+Активно применяю ChatGPT, Grok, Claude Code в рабочих процессах. Ищу удалённую позицию в
+международной web3/crypto компании или в AI-automation роли в любой индустрии.
 
 ## Опыт работы
 
-### AI Automation Developer — Personal Project (Январь 2026 — настоящее время)
-- Разработал job-hunter: automated vacancy tracking system на Python (APScheduler, SQLite, Docker)
-- Интегрировал AI-матчинг вакансий через Cerebras/Gemini API с батч-обработкой и prompt caching
-- Реализовал парсинг 10+ источников: HH.ru, Greenhouse, Lever API, RemoteOK, Telegram-каналы
-- Telegram-бот с HTML-форматированием уведомлений, Docker Compose деплой
+### AI Automation Developer — Personal Projects (Июнь 2026 — настоящее время)
+- **job-hunter**: automated vacancy tracking system на Python (APScheduler, SQLite, Docker);
+  AI-матчинг вакансий через Cerebras/Gemini API с батч-обработкой и prompt caching; парсинг 10+
+  источников (HH.ru, Greenhouse, Lever API, RemoteOK, Telegram-каналы); Telegram-бот с
+  HTML-форматированием уведомлений
+- **crypto-trader**: мультибиржевая система торговых ботов (Bybit / OKX / MEXC) — несколько
+  независимых ботов на общей архитектуре (Grid, Funding Arb, Scalper), Redis для состояния между
+  рестартами, Dead Man's Switch (watchdog между двумя VPS, аварийное закрытие позиций при потере
+  связи), риск-менеджмент, Docker Compose; сейчас в paper-mode (тестовый режим)
+- Администрирование собственной VPS-инфраструктуры (Linux, Docker, systemd) для обоих проектов
 - **GitHub**: портфолио AI-автоматизаций (в разработке)
 
-### Independent Web3 / DeFi Operator — Self-employed (Январь 2020 — настоящее время, 5+ лет)
+### Independent Web3 / DeFi Operator — Self-employed (Июнь 2020 — настоящее время, 5+ лет)
 - Практическая работа с multichain DeFi ecosystem: swaps, bridges, staking/unstaking, LP, claims, deposits/withdrawals, approvals/revokes
 - Управление multi-wallet инфраструктурой: MetaMask, Rabby, Phantom, Solflare, Ledger (hardware), Tonkeeper, Keplr, TronLink, Exodus, Nova, MathWallet, Braavos, TronLink (13+ кошельков)
 - Работа с анти-детект браузерами (ADS Power, Dolphin Anty) и VPS/прокси для multi-account management
@@ -75,11 +81,13 @@ Multi-account Management, Anti-detect Browsers (ADS Power, Dolphin Anty), VPS, P
 Transaction Verification, Blockchain Explorers, QA Testing, Manual Testing, Web3 Testing,
 dApps Testing, Bug Reporting, Airdrop Research, Protocol Testing, Cross-chain Bridges,
 AI Tools (ChatGPT, Grok, Claude Code), Python Automation, AI API Integration,
-Prompt Engineering, Workflow Automation, Telegram Bot API, Docker, Community Support
+Prompt Engineering, Workflow Automation, Telegram Bot API, Docker, Community Support,
+Multi-exchange Trading Bots (Bybit, OKX, MEXC), Redis, Risk Management, VPS Administration,
+Linux, systemd, n8n (beginner)
 
 ## Языки
 - Русский: родной
-- Английский: A2/B1 (технические тексты, профессиональная коммуникация с помощью AI)
+- Английский: A1–A2 (базовый, технические тексты с помощью AI)
 
 ## Сильные стороны
 Внимательность к деталям, системность, техническая грамотность, быстрое обучение,
