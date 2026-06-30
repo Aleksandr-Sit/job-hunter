@@ -17,6 +17,9 @@ AI Matching — Cerebras LLM scores each job 0–100 against your profile
 Telegram — sends only jobs with score ≥ 65, in Russian, sorted by relevance
 ```
 
+Full data flow, plus the reasoning behind each architectural choice (why two filter
+stages, why SQLite, why polling not a webhook, etc.) — see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 ## Sources
 
 | Source | Type | Jobs/run |
@@ -169,10 +172,14 @@ job-hunter/
 │   ├── matcher/
 │   │   ├── cerebras_matcher.py # Cerebras AI batch matching
 │   │   └── pre_filter.py      # gate + weighted scoring before AI
-│   ├── bot/                    # Telegram notifications
+│   ├── bot/
+│   │   ├── notifier.py         # sends messages, builds keyboard
+│   │   └── callback_handler.py # polling listener for the "Пропустить" button
 │   ├── storage.py              # SQLite: dedup + match cache
 │   └── scheduler.py            # APScheduler main loop
-├── docs/                       # reference docs, target criteria, audit report
+├── docs/
+│   ├── ARCHITECTURE.md         # data flow + design decisions
+│   └── ...                     # reference docs, target criteria, audit report
 ├── data/                       # SQLite DB, logs, match checkpoints (gitignored)
 ├── .env.example
 └── requirements.txt
