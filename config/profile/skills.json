@@ -1,16 +1,19 @@
 {
   "web3_blockchain": [
-    {"name": "Web3 / DeFi operations", "level": "expert", "years": 5},
-    {"name": "On-chain transactions (swaps, bridges, staking, LP)", "level": "expert", "years": 5},
-    {"name": "EVM networks", "level": "expert", "years": 5},
-    {"name": "Wallet management (hot/cold)", "level": "expert", "years": 5},
-    {"name": "Blockchain explorers (Etherscan, etc.)", "level": "expert", "years": 5},
-    {"name": "CEX/DEX operations", "level": "expert", "years": 5},
-    {"name": "Transaction verification", "level": "advanced", "years": 4},
-    {"name": "Smart contract interaction", "level": "advanced", "years": 4},
-    {"name": "Gas / slippage management", "level": "advanced", "years": 4},
-    {"name": "Wallet security", "level": "advanced", "years": 4},
-    {"name": "Non-EVM networks (Solana, Starknet)", "level": "intermediate", "years": 3}
+    {"name": "Web3 / DeFi operations", "level": "expert", "years": 6},
+    {"name": "On-chain transactions (swaps, bridges, staking, LP)", "level": "expert", "years": 6},
+    {"name": "EVM networks", "level": "expert", "years": 6},
+    {"name": "Wallet management (hot/cold)", "level": "expert", "years": 6},
+    {"name": "Blockchain explorers (Etherscan, etc.)", "level": "expert", "years": 6},
+    {"name": "CEX/DEX operations", "level": "expert", "years": 6},
+    {"name": "Transaction verification", "level": "advanced", "years": 5},
+    {"name": "Smart contract interaction", "level": "advanced", "years": 5},
+    {"name": "Gas / slippage management", "level": "advanced", "years": 5},
+    {"name": "Wallet security", "level": "advanced", "years": 5},
+    {"name": "Non-EVM networks (Solana, Starknet)", "level": "intermediate", "years": 4},
+    {"name": "P2P / fiat on-off-ramp (USDT exchangers, P2P platforms)", "level": "advanced", "years": 6},
+    {"name": "NFT (creation, trading on OpenSea, MagicEden)", "level": "intermediate", "years": 4},
+    {"name": "GameFi", "level": "intermediate", "years": 3}
   ],
   "wallets": [
     "MetaMask", "Rabby", "Phantom", "Solflare",
@@ -43,14 +46,11 @@
   "ai_automation": [
     {"name": "ChatGPT", "level": "advanced"},
     {"name": "Grok", "level": "intermediate"},
-    {"name": "Claude / Claude Code", "level": "intermediate"},
+    {"name": "AI-orchestrated development (Claude Code) — formulates tasks, AI writes code/config, candidate tests, deploys and operates", "level": "advanced"},
     {"name": "AI API integration (Cerebras, Gemini, Groq)", "level": "intermediate"},
-    {"name": "Python automation", "level": "intermediate"},
     {"name": "Telegram Bot API", "level": "intermediate"},
-    {"name": "Docker / Docker Compose", "level": "intermediate"},
     {"name": "Prompt engineering", "level": "intermediate"},
-    {"name": "AI-assisted workflows", "level": "advanced"},
-    {"name": "n8n", "level": "beginner"}
+    {"name": "AI-assisted workflows", "level": "advanced"}
   ],
   "infrastructure": [
     {"name": "VPS servers", "level": "intermediate"},

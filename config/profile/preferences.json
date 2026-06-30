@@ -14,9 +14,9 @@
     "RPA Developer"
   ],
   "salary": {
-    "min_rub_monthly": 150000,
-    "preferred_rub_monthly": 250000,
-    "min_usd_monthly": 1500,
+    "min_rub_monthly": 130000,
+    "preferred_rub_monthly": 240000,
+    "min_usd_monthly": 1200,
     "preferred_usd_monthly": 3000,
     "currency_preference": ["USD", "USDT", "RUB"]
   },
@@ -103,5 +103,5 @@
   "open_to_relocation": true,
   "relocation_countries": ["Greece", "Cyprus", "Thailand", "Turkey", "Armenia", "UAE", "Serbia"],
   "english_level": "A1-A2",
-  "notes": "Ищет международную удалённую работу в web3/crypto (Operations/Support) или в AI-automation роли в любой индустрии. Сильная сторона — 5+ лет глубокого практического знания DeFi-экосистемы, multi-account инфраструктура, cross-chain операции. С июня 2026 строит AI-автоматизации на Claude Code — два рабочих портфельных проекта (job-hunter, crypto-trader) на Python/Docker, честно начинающий уровень. Готов к entry/mid позициям и релокации в Грецию, Кипр, Таиланд, Турцию, Армению, ОАЭ, Сербию."
+  "notes": "Ищет международную удалённую работу в web3/crypto (Operations/Support) или в AI-automation роли в любой индустрии; remote из России — приоритет, релокация только при исключительном оффере. Сильная сторона — 6 лет глубокого практического знания DeFi-экосистемы (включая P2P/fiat, NFT, GameFi, пресейлы), multi-account инфраструктура, cross-chain операции. С июня 2026 строит AI-автоматизации через AI-orchestrated development на Claude Code (не пишет код сам) — два рабочих портфельных проекта (job-hunter, crypto-trader), честно начинающий уровень. Готов к entry/mid позициям и релокации в Грецию, Кипр, Таиланд, Турцию, Армению, ОАЭ, Сербию."
 }
