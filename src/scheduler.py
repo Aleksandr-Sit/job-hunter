@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 
 from .models import Job
 from . import storage
-from .matcher.pre_filter import passes_pre_filter
+from .matcher.pre_filter import score_job
 from .matcher.gemini_matcher import match_jobs
 from .bot.notifier import send_jobs_batch, send_daily_summary, send_text
 
@@ -124,7 +124,13 @@ def run_once() -> None:
     seen_ids = storage.is_seen_batch([j.id for j in all_jobs])
     unseen = [j for j in all_jobs if j.id not in seen_ids]
     storage.mark_seen_batch(unseen)
-    new_jobs = [j for j in unseen if passes_pre_filter(j)]
+    new_jobs = []
+    for j in unseen:
+        best = score_job(j)["best"]
+        if best["passed_gate"] and best["recommend"]:
+            j.match_role = best["role"]
+            j.match_reasons = best["reasons"]
+            new_jobs.append(j)
 
     logger.info("After dedup + pre-filter: %d jobs to match", len(new_jobs))
 

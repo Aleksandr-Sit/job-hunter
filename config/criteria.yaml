@@ -1,0 +1,351 @@
+# Критерии целевых ролей (Этап 3).
+# Источник правды для смысла: docs/TARGET_CRITERIA.md
+# Эталон логики (только справочник, НЕ модуль): docs/target_criteria_REFERENCE.py
+# Логика, которая это использует: src/matcher/pre_filter.py (score_job/passes_pre_filter)
+#
+# Английский A1–A2 — реальный барьер кандидата. Поэтому требование сильного
+# английского штрафует балл (сильнее для web3_support), а русскоязычные/CIS
+# команды балл повышают.
+
+# ── Глобальные стоп-слова: reject для ЛЮБОЙ роли ──────────────────────────────
+global_hard_exclude:
+  # неоплата
+  - "unpaid"
+  - "volunteer only"
+  - "equity only"
+  - "no salary"
+  - "for free"
+  # скам-сигналы
+  - "recruitment fee"
+  - "registration fee"
+  - "processing fee"
+  - "pay to apply"
+  - "send funds"
+  - "send crypto"
+  - "upfront payment"
+  - "training fee"
+  # чисто разработческие роли (нужен код, которого пока нет)
+  - "solidity developer"
+  - "smart contract developer"
+  - "smart contract engineer"
+  - "rust developer"
+  - "protocol engineer"
+  - "blockchain developer"
+  - "frontend developer"
+  - "front-end developer"
+  - "backend developer"
+  - "back-end developer"
+  - "full stack developer"
+  - "full-stack developer"
+  - "software engineer"
+  - "staff engineer"
+  - "devops engineer"
+
+# ── Общие списки (одинаковы для обеих ролей) ──────────────────────────────────
+english_penalty:
+  - "native english"
+  - "native-level english"
+  - "fluent english"
+  - "fluent in english"
+  - "excellent english"
+  - "perfect english"
+  - "strong command of english"
+  - "c1"
+  - "c2"
+  - "english c1"
+  - "english c2"
+
+# CIS / русскоязычная доработка — переиспользуется из существующей части
+# pre_filter.py (та же логика, один источник списка терминов).
+english_boost:
+  - "russian"
+  - "russian-speaking"
+  - "русск"
+  - "cis"
+  - "снг"
+  - "ru community"
+
+remote_boost:
+  - "remote"
+  - "fully remote"
+  - "work from anywhere"
+  - "anywhere"
+  - "worldwide"
+  - "distributed team"
+  - "work from home"
+
+onsite_penalty:
+  - "on-site"
+  - "onsite"
+  - "on site"
+  - "in office"
+  - "in-office"
+
+relocation_ok:
+  - "cyprus"
+  - "limassol"
+  - "greece"
+  - "athens"
+  - "thailand"
+  - "turkey"
+  - "istanbul"
+  - "armenia"
+  - "yerevan"
+  - "uae"
+  - "dubai"
+  - "serbia"
+  - "belgrade"
+  - "кипр"
+  - "лимассол"
+  - "греция"
+  - "таиланд"
+  - "турция"
+  - "армения"
+  - "ереван"
+  - "оаэ"
+  - "дубай"
+  - "сербия"
+  - "белград"
+
+# ── Веса ────────────────────────────────────────────────────────────────────
+weights:
+  gate_base: 10
+  title_strong: 40
+  title_weak: 20
+  boost_each: 6
+  boost_cap: 30
+  penalize_each: -12
+  penalize_cap: -36
+  senior: -6
+  remote: 10
+  relocation: 8
+  onsite: -18
+  english_penalty_each: -14
+  english_boost: 10
+
+# ── Критерии по ролям ──────────────────────────────────────────────────────
+roles:
+  crypto_ops:
+    threshold: 55
+    english_weight: 1.0    # для ops английский менее критичен в ежедневной работе
+    must_role: ["operations", "ops", "operational"]
+    must_domain:
+      - "crypto"
+      - "blockchain"
+      - "web3"
+      - "defi"
+      - "on-chain"
+      - "onchain"
+      - "digital asset"
+      - "stablecoin"
+      - "cex"
+      - "dex"
+      - "exchange"
+      - "wallet"
+      - "token"
+      - "ledger"
+      - "etherscan"
+    titles_strong:
+      - "crypto operations"
+      - "web3 operations"
+      - "defi operations"
+      - "blockchain operations"
+      - "digital asset operations"
+      - "exchange operations"
+      - "trading operations"
+      - "treasury operations"
+      - "settlement operations"
+      - "on-chain operations"
+      - "token operations"
+      - "wallet operations"
+      - "crypto ops"
+      - "operations specialist"
+      - "operations associate"
+    titles_weak:
+      - "operations analyst"
+      - "business operations"
+      - "operations coordinator"
+      - "payment operations"
+      - "payments operations"
+      - "compliance operations"
+      - "kyc operations"
+      - "operations manager"
+    keywords_boost:
+      - "multichain"
+      - "evm"
+      - "ethereum"
+      - "solana"
+      - "arbitrum"
+      - "staking"
+      - "bridge"
+      - "liquidity"
+      - "settlement"
+      - "reconciliation"
+      - "custody"
+      - "treasury"
+      - "metamask"
+      - "transaction monitoring"
+      - "market maker"
+      - "kyc"
+      - "aml"
+      - "trading"
+      - "async"
+    keywords_penalize:
+      - "sales"
+      - "account executive"
+      - "business development"
+      - "cold calling"
+      - "phone support"
+      - "head of"
+      - "director"
+      - "vp of"
+      - "vice president"
+      - "principal"
+      - "lead"
+      - "chief"
+    senior_terms: ["senior", "sr."]
+
+  web3_support:
+    threshold: 55
+    english_weight: 1.6     # Support — коммуникационная роль, английский решает
+    must_role:
+      - "support"
+      - "customer"
+      - "help desk"
+      - "helpdesk"
+      - "trust and safety"
+      - "trust & safety"
+      - "user support"
+      - "community"
+    must_domain:
+      - "crypto"
+      - "blockchain"
+      - "web3"
+      - "defi"
+      - "on-chain"
+      - "onchain"
+      - "digital asset"
+      - "stablecoin"
+      - "cex"
+      - "dex"
+      - "exchange"
+      - "wallet"
+      - "token"
+      - "ledger"
+      - "metamask"
+    titles_strong:
+      - "web3 support"
+      - "crypto support"
+      - "customer support"
+      - "technical support"
+      - "user support"
+      - "community support"
+      - "wallet support"
+      - "exchange support"
+      - "support specialist"
+      - "support agent"
+      - "support representative"
+      - "trust and safety"
+      - "trust & safety"
+    titles_weak:
+      - "customer success"
+      - "customer experience"
+      - "client support"
+      - "help desk"
+      - "helpdesk"
+      - "support engineer"
+      - "tier 1"
+      - "tier 2"
+      - "compliance support"
+      - "onboarding specialist"
+      - "kyc"
+    keywords_boost:
+      - "zendesk"
+      - "intercom"
+      - "freshdesk"
+      - "discord"
+      - "telegram"
+      - "troubleshooting"
+      - "crm"
+      - "sla"
+      - "wallet"
+      - "transaction"
+      - "knowledge base"
+      - "documentation"
+      - "multichain"
+      - "on-chain"
+      - "async"
+      - "ticket"
+    keywords_penalize:
+      - "sales"
+      - "account executive"
+      - "business development"
+      - "outbound"
+      - "cold calling"
+      - "quota"
+      - "upsell"
+      - "phone support"
+      - "voice support"
+      - "call center"
+      - "head of"
+      - "director"
+      - "lead"
+      - "chief"
+    senior_terms: ["senior", "sr."]
+
+  # Третья роль — НЕ привязана к крипто/web3 (must_domain пуст): кандидат
+  # позиционируется как AI-automation специалист в любой индустрии. Здесь
+  # фильтр держится на titles/keywords, а не на отраслевом домене.
+  # Кандидат — новичок (Claude Code с июня 2026), поэтому keywords_penalize
+  # отсекает тяжёлые ML/research-роли не по его профилю, а не junior-позиции.
+  ai_automation:
+    threshold: 55
+    english_weight: 1.2
+    must_role: ["automation", "ai agent", "ai workflow", "no-code", "low-code", "rpa"]
+    must_domain: []
+    titles_strong:
+      - "ai automation specialist"
+      - "automation specialist"
+      - "automation engineer"
+      - "workflow automation"
+      - "rpa developer"
+      - "no-code developer"
+      - "no-code engineer"
+      - "ai agent developer"
+      - "process automation specialist"
+      - "ai operations specialist"
+      - "automation consultant"
+    titles_weak:
+      - "business process automation"
+      - "integration specialist"
+      - "ai implementation specialist"
+      - "ai solutions specialist"
+      - "technical automation"
+    keywords_boost:
+      - "n8n"
+      - "zapier"
+      - "make.com"
+      - "python"
+      - "telegram bot"
+      - "api integration"
+      - "prompt engineering"
+      - "llm"
+      - "chatgpt"
+      - "claude"
+      - "openai"
+      - "workflow"
+      - "webhook"
+      - "docker"
+    keywords_penalize:
+      - "machine learning engineer"
+      - "ml engineer"
+      - "data scientist"
+      - "research scientist"
+      - "phd"
+      - "computer vision"
+      - "deep learning"
+      - "head of"
+      - "director"
+      - "lead"
+      - "chief"
+    senior_terms: ["senior", "sr."]
