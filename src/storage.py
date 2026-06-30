@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional
-from .models import Job, MatchResult
+from .models import MatchResult
 
 
 DB_PATH = Path(__file__).parent.parent / "data" / "jobs.db"
@@ -37,15 +37,6 @@ def init_db() -> None:
                 recommendation TEXT NOT NULL,
                 matched_at TEXT NOT NULL
             );
-
-            CREATE TABLE IF NOT EXISTS saved_jobs (
-                job_id TEXT PRIMARY KEY,
-                title TEXT,
-                company TEXT,
-                url TEXT,
-                score INTEGER,
-                saved_at TEXT NOT NULL
-            );
         """)
 
 
@@ -58,14 +49,6 @@ def is_seen_batch(job_ids: list) -> set:
             f"SELECT id FROM seen_jobs WHERE id IN ({placeholders})", job_ids
         ).fetchall()
     return {row["id"] for row in rows}
-
-
-def mark_seen(job: Job) -> None:
-    with get_conn() as conn:
-        conn.execute(
-            "INSERT OR IGNORE INTO seen_jobs (id, source, title, url, seen_at) VALUES (?,?,?,?,?)",
-            (job.id, job.source, job.title, job.url, datetime.now(timezone.utc).isoformat()),
-        )
 
 
 def mark_seen_batch(jobs: list) -> None:
@@ -107,13 +90,4 @@ def save_match(result: MatchResult) -> None:
                 result.recommendation,
                 datetime.now(timezone.utc).isoformat(),
             ),
-        )
-
-
-def save_job(job: Job, score: int) -> None:
-    with get_conn() as conn:
-        conn.execute(
-            """INSERT OR REPLACE INTO saved_jobs
-               (job_id, title, company, url, score, saved_at) VALUES (?,?,?,?,?,?)""",
-            (job.id, job.title, job.company, job.url, score, datetime.now(timezone.utc).isoformat()),
         )
