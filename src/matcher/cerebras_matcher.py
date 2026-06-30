@@ -27,9 +27,9 @@ class _AIGeoBlockError(Exception):
 _PROFILE_DIR = Path(__file__).parent.parent.parent / "config" / "profile"
 _MATCHES_JSONL = Path(__file__).parent.parent.parent / "data" / "matches.jsonl"
 _BATCH_SIZE = 5
-_GROQ_TIMEOUT = 30      # секунды ожидания ответа API
-_GROQ_MAX_RETRY = 3     # попытки при 429/5xx
-_GROQ_RETRY_SLEEP = 20  # секунды между попытками
+_CEREBRAS_TIMEOUT = 30      # секунды ожидания ответа API
+_CEREBRAS_MAX_RETRY = 3     # попытки при 429/5xx
+_CEREBRAS_RETRY_SLEEP = 20  # секунды между попытками
 
 _SYSTEM_INSTRUCTION = """\
 You are a job matching assistant for a specific candidate (full profile below).
@@ -154,7 +154,7 @@ def _get_client() -> OpenAI:
     if proxy_url:
         import httpx
         logger.debug("Cerebras: routing via proxy %s", proxy_url)
-        kwargs["http_client"] = httpx.Client(proxy=proxy_url, timeout=_GROQ_TIMEOUT)
+        kwargs["http_client"] = httpx.Client(proxy=proxy_url, timeout=_CEREBRAS_TIMEOUT)
     return OpenAI(**kwargs)
 
 
@@ -175,7 +175,7 @@ def match_batch(jobs: list[Job], client: Optional[OpenAI] = None) -> list[MatchR
     )
 
     raw = None
-    for attempt in range(1, _GROQ_MAX_RETRY + 1):
+    for attempt in range(1, _CEREBRAS_MAX_RETRY + 1):
         try:
             response = client.chat.completions.create(
                 model=model_name,
@@ -185,7 +185,7 @@ def match_batch(jobs: list[Job], client: Optional[OpenAI] = None) -> list[MatchR
                 ],
                 temperature=0.1,
                 max_tokens=4096,
-                timeout=_GROQ_TIMEOUT,
+                timeout=_CEREBRAS_TIMEOUT,
             )
             raw = response.choices[0].message.content.strip()
             break
@@ -197,13 +197,13 @@ def match_batch(jobs: list[Job], client: Optional[OpenAI] = None) -> list[MatchR
             if is_geo_block:
                 logger.error("Cerebras blocked (403). Check CEREBRAS_API_KEY. Skipping all batches.")
                 raise _AIGeoBlockError() from e
-            if (is_rate_limit or is_server_err) and attempt < _GROQ_MAX_RETRY:
-                wait = _GROQ_RETRY_SLEEP * attempt
+            if (is_rate_limit or is_server_err) and attempt < _CEREBRAS_MAX_RETRY:
+                wait = _CEREBRAS_RETRY_SLEEP * attempt
                 logger.warning("Cerebras attempt %d/%d failed (%s). Retrying in %ds…",
-                               attempt, _GROQ_MAX_RETRY, e, wait)
+                               attempt, _CEREBRAS_MAX_RETRY, e, wait)
                 time.sleep(wait)
             else:
-                logger.error("OpenRouter error (attempt %d): %s", attempt, e)
+                logger.error("Cerebras error (attempt %d): %s", attempt, e)
                 return []
 
     if raw is None:
@@ -212,7 +212,7 @@ def match_batch(jobs: list[Job], client: Optional[OpenAI] = None) -> list[MatchR
     start = raw.find("[")
     end = raw.rfind("]") + 1
     if start == -1 or end == 0:
-        logger.error("Groq returned non-JSON: %s", raw[:300])
+        logger.error("Cerebras returned non-JSON: %s", raw[:300])
         return []
 
     try:
@@ -346,7 +346,7 @@ if __name__ == "__main__":
             ),
         ]
 
-        print("Testing Groq matcher with 3 jobs...\n")
+        print("Testing Cerebras matcher with 3 jobs...\n")
         results = match_jobs(test_jobs, threshold=0)
         for job, match in results:
             print(f"[{match.score}/100] {job.title}")
