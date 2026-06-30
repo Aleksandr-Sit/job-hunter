@@ -28,7 +28,6 @@ def _make_keyboard(job: Job) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton("🔗 Открыть", url=job.url),
-            InlineKeyboardButton("💾 Сохранить", callback_data=f"save_{job.id}"),
             InlineKeyboardButton("❌ Пропустить", callback_data=f"skip_{job.id}"),
         ]
     ])
