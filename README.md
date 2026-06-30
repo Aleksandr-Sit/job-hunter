@@ -145,7 +145,6 @@ mkdir -p /opt/job-hunter/data/logs
 
 # 3. Copy secrets from local machine (run in local PowerShell)
 scp -i "~/.ssh/your_key" .env root@<SERVER_IP>:/opt/job-hunter/
-scp -i "~/.ssh/your_key" data/tg_session.session root@<SERVER_IP>:/opt/job-hunter/data/
 scp -i "~/.ssh/your_key" data/jobs.db root@<SERVER_IP>:/opt/job-hunter/data/
 
 # 4. Start
