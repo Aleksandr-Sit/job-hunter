@@ -5,6 +5,7 @@
 import logging
 import os
 import socket
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -18,6 +19,7 @@ from . import storage
 from .matcher.pre_filter import score_job
 from .matcher.cerebras_matcher import match_jobs
 from .bot.notifier import send_jobs_batch, send_daily_summary, send_text
+from .bot.callback_handler import run_listener
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
@@ -187,6 +189,8 @@ def main() -> None:
 
     logger.info("Job Hunter starting. Waiting for network...")
     _wait_for_network(timeout=180)
+
+    threading.Thread(target=run_listener, daemon=True).start()
 
     scheduler = BlockingScheduler(timezone="UTC")
 
