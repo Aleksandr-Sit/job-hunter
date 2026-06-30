@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 from .models import Job
 from . import storage
 from .matcher.pre_filter import score_job
-from .matcher.gemini_matcher import match_jobs
+from .matcher.cerebras_matcher import match_jobs
 from .bot.notifier import send_jobs_batch, send_daily_summary, send_text
 
 load_dotenv(Path(__file__).parent.parent / ".env")
