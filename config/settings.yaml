@@ -3,7 +3,6 @@
 matching:
   threshold: 65          # минимальный score для отправки в Telegram
   batch_size: 5          # вакансий за один запрос к Groq (500 chars × 5 ≈ 3k токенов/батч)
-  model: "llama-3.3-70b-versatile"  # задаётся через GROQ_MODEL в .env
 
 scheduler:
   # interval_minutes: 60
@@ -38,7 +37,6 @@ parsers:
       - "No-code разработчик"
     area: 113            # 113 = Россия (все регионы)
     per_page: 50
-    only_with_salary: false
 
   remoteok:
     enabled: true
