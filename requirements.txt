@@ -1,4 +1,4 @@
-# AI матчинг (Together AI — OpenAI-совместимый, без геоблока для РФ)
+# AI матчинг (Cerebras — OpenAI-совместимый SDK, бесплатный inference)
 openai>=1.0.0
 
 # HTTP & scraping

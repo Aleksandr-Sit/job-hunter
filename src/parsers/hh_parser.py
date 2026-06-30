@@ -59,9 +59,6 @@ class HHParser(BaseParser):
             "per_page": 50,
             "order_by": "publication_time",
         }
-        if not self.cfg.get("only_with_salary", False) is True:
-            pass  # RSS не поддерживает этот фильтр, пропускаем
-
         try:
             # trust_env=False: hh.ru доступен напрямую из России,
             # через международный прокси — блокируется (451)
