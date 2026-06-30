@@ -19,6 +19,8 @@ class Job:
     published_at: Optional[datetime] = None
     tags: list[str] = field(default_factory=list)
     raw: dict = field(default_factory=dict)
+    match_role: Optional[str] = None
+    match_reasons: list[str] = field(default_factory=list)
 
     def to_text(self) -> str:
         salary = ""
