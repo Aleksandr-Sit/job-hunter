@@ -42,13 +42,19 @@ Checkpoint saved after every batch → safe to restart mid-run without re-proces
 
 ## Pre-filter rules
 
-Automatically excluded:
-- Senior / Director / Head / VP / C-level titles
-- Developer / Engineer roles (unless QA/Ops context)
-- Requires Solidity, smart contract development, backend coding
-- 6+ years experience requirement
-- Fluent/Native/C1/C2 English requirement
+Two-layer filtering before AI matching (`config/criteria.yaml`):
+
+**Hard gate** (instant exclude):
+- C-level / founder / president titles
+- Pure dev roles (Solidity, smart contracts, backend/frontend coding)
 - Non-Russian/English language requirements
+
+**Weighted score** (0–100) — soft penalties, lower the score but don't exclude:
+- Director / Head / VP / Lead / Principal titles
+- Fluent/Native/C1/C2 English requirement (penalty weight varies by role)
+- 6+ years experience requirement
+
+Only jobs that pass the gate **and** clear the role's threshold go to AI matching.
 
 ## Telegram notification format
 
@@ -152,19 +158,23 @@ After deploy the container restarts automatically on server reboot (`restart: un
 
 ```
 job-hunter/
+├── PROFILE.md                 # master candidate profile (source of truth)
+├── CLAUDE.md                  # project rules for AI-assisted dev
 ├── config/
 │   ├── settings.yaml          # intervals, threshold, sources
 │   ├── sources.yaml           # Telegram channels, job boards
+│   ├── criteria.yaml          # role-scoring criteria (weights, keywords)
 │   └── profile/               # your resume, skills, preferences
 ├── src/
-│   ├── parsers/               # HH.ru, Telegram, Greenhouse, Lever, web boards
+│   ├── parsers/                # HH.ru, Telegram, Greenhouse, Lever, web boards
 │   ├── matcher/
 │   │   ├── gemini_matcher.py  # Cerebras AI batch matching
-│   │   └── pre_filter.py      # fast keyword filter before AI
-│   ├── bot/                   # Telegram notifications
-│   ├── storage.py             # SQLite: dedup + match cache
-│   └── scheduler.py           # APScheduler main loop
-├── data/                      # SQLite DB, logs, match checkpoints (gitignored)
+│   │   └── pre_filter.py      # gate + weighted scoring before AI
+│   ├── bot/                    # Telegram notifications
+│   ├── storage.py              # SQLite: dedup + match cache
+│   └── scheduler.py            # APScheduler main loop
+├── docs/                       # reference docs, target criteria, audit report
+├── data/                       # SQLite DB, logs, match checkpoints (gitignored)
 ├── .env.example
 └── requirements.txt
 ```
