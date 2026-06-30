@@ -10,7 +10,7 @@
 - `src/` — код; `src/matcher/pre_filter.py` — предфильтр (недавно доработан под CIS/русскоязычные вакансии).
 - `docker-compose.yml`, `Dockerfile`, `requirements.txt`, `.env` — окружение.
 - `PROFILE.md` — человекочитаемый мастер-профиль (источник правды о кандидате).
-- `docs/` — справочники: `career_consultant_prompt.md`, `TARGET_CRITERIA.md`, `MERGE_TASK.md`, `target_criteria_REFERENCE.py`.
+- `docs/` — справочники: `career_consultant_prompt.md`, `TARGET_CRITERIA.md`, `target_criteria_REFERENCE.py`, `AUDIT.md`, `project_audit_prompt.md`.
 
 ## Правила работы
 - **PROFILE.md — мастер.** `config/profile/` держи в соответствии с ним; второй источник правды не создавай.

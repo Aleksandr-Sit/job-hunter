@@ -1,7 +1,7 @@
 """web3.career — scraping."""
 import hashlib
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 import requests
 from bs4 import BeautifulSoup
@@ -51,7 +51,7 @@ class Web3CareerParser(BaseParser):
                             url=url,
                             source="web3.career",
                             is_remote=True,
-                            published_at=datetime.utcnow(),
+                            published_at=datetime.now(timezone.utc),
                         ))
                 except Exception:
                     pass
@@ -79,6 +79,6 @@ class Web3CareerParser(BaseParser):
             url=url,
             source="web3.career",
             is_remote=True,
-            published_at=datetime.utcnow(),
+            published_at=datetime.now(timezone.utc),
             tags=tags,
         )

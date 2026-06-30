@@ -1,7 +1,7 @@
 """Contra.com — freelance platform."""
 import hashlib
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 import requests
 from bs4 import BeautifulSoup
@@ -44,7 +44,7 @@ class ContraParser(BaseParser):
                         url=url,
                         source="contra.com",
                         is_remote=True,
-                        published_at=datetime.utcnow(),
+                        published_at=datetime.now(timezone.utc),
                     ))
             except Exception as e:
                 logger.debug("Contra parse skip: %s", e)

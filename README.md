@@ -17,6 +17,9 @@ AI Matching — Cerebras LLM scores each job 0–100 against your profile
 Telegram — sends only jobs with score ≥ 65, in Russian, sorted by relevance
 ```
 
+Full data flow, plus the reasoning behind each architectural choice (why two filter
+stages, why SQLite, why polling not a webhook, etc.) — see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 ## Sources
 
 | Source | Type | Jobs/run |
@@ -42,13 +45,19 @@ Checkpoint saved after every batch → safe to restart mid-run without re-proces
 
 ## Pre-filter rules
 
-Automatically excluded:
-- Senior / Director / Head / VP / C-level titles
-- Developer / Engineer roles (unless QA/Ops context)
-- Requires Solidity, smart contract development, backend coding
-- 6+ years experience requirement
-- Fluent/Native/C1/C2 English requirement
+Two-layer filtering before AI matching (`config/criteria.yaml`):
+
+**Hard gate** (instant exclude):
+- C-level / founder / president titles
+- Pure dev roles (Solidity, smart contracts, backend/frontend coding)
 - Non-Russian/English language requirements
+
+**Weighted score** (0–100) — soft penalties, lower the score but don't exclude:
+- Director / Head / VP / Lead / Principal titles
+- Fluent/Native/C1/C2 English requirement (penalty weight varies by role)
+- 6+ years experience requirement
+
+Only jobs that pass the gate **and** clear the role's threshold go to AI matching.
 
 ## Telegram notification format
 
@@ -139,7 +148,6 @@ mkdir -p /opt/job-hunter/data/logs
 
 # 3. Copy secrets from local machine (run in local PowerShell)
 scp -i "~/.ssh/your_key" .env root@<SERVER_IP>:/opt/job-hunter/
-scp -i "~/.ssh/your_key" data/tg_session.session root@<SERVER_IP>:/opt/job-hunter/data/
 scp -i "~/.ssh/your_key" data/jobs.db root@<SERVER_IP>:/opt/job-hunter/data/
 
 # 4. Start
@@ -152,19 +160,27 @@ After deploy the container restarts automatically on server reboot (`restart: un
 
 ```
 job-hunter/
+├── PROFILE.md                 # master candidate profile (source of truth)
+├── CLAUDE.md                  # project rules for AI-assisted dev
 ├── config/
 │   ├── settings.yaml          # intervals, threshold, sources
 │   ├── sources.yaml           # Telegram channels, job boards
+│   ├── criteria.yaml          # role-scoring criteria (weights, keywords)
 │   └── profile/               # your resume, skills, preferences
 ├── src/
-│   ├── parsers/               # HH.ru, Telegram, Greenhouse, Lever, web boards
+│   ├── parsers/                # HH.ru, Telegram, Greenhouse, Lever, web boards
 │   ├── matcher/
-│   │   ├── gemini_matcher.py  # Cerebras AI batch matching
-│   │   └── pre_filter.py      # fast keyword filter before AI
-│   ├── bot/                   # Telegram notifications
-│   ├── storage.py             # SQLite: dedup + match cache
-│   └── scheduler.py           # APScheduler main loop
-├── data/                      # SQLite DB, logs, match checkpoints (gitignored)
+│   │   ├── cerebras_matcher.py # Cerebras AI batch matching
+│   │   └── pre_filter.py      # gate + weighted scoring before AI
+│   ├── bot/
+│   │   ├── notifier.py         # sends messages, builds keyboard
+│   │   └── callback_handler.py # polling listener for the "Пропустить" button
+│   ├── storage.py              # SQLite: dedup + match cache
+│   └── scheduler.py            # APScheduler main loop
+├── docs/
+│   ├── ARCHITECTURE.md         # data flow + design decisions
+│   └── ...                     # reference docs, target criteria, audit report
+├── data/                       # SQLite DB, logs, match checkpoints (gitignored)
 ├── .env.example
 └── requirements.txt
 ```

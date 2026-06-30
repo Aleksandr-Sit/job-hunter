@@ -30,31 +30,30 @@ matching:
 
 ### Улучшить prompt матчинга
 
-Файл: `src/matcher/claude_matcher.py` → функция `_make_system_prompt()`
+Файл: `src/matcher/cerebras_matcher.py` → константа `_SYSTEM_INSTRUCTION`
 
 Структура системного промта:
-1. Роль и задача
-2. Шкала оценок (0-100) — **изменяй здесь если скор некалиброван**
-3. Формат JSON-ответа
-4. Профиль кандидата (кэшируется)
+1. Контекст кандидата (профиль, проекты)
+2. Три приоритетные роли и порядок их веса
+3. Шкала оценок (0-100) — **изменяй здесь если скор некалиброван**
+4. Штрафы/обнуление score (английский, лидерские роли, чисто-дев роли и т.д.)
+5. Формат JSON-ответа
 
-Пример добавления критерия:
-```python
-"- Weight salary match heavily: if salary is below candidate minimum, score max 50\n"
-```
+Пример добавления критерия — дописать строку в блок "Score down for: ...".
 
 ### Обновить профиль
 
-- `config/profile/resume.md` — резюме (кэшируется в Claude, обновится автоматически)
+- `config/profile/resume.md` — резюме (используется в каждом запросе через `_build_profile_text()`)
 - `config/profile/skills.json` — навыки и уровни
 - `config/profile/preferences.json` — зарплата, роли, стек, формат работы
 
-После изменения профиля **не нужно** перезапускать — кэш обновится сам.
+После изменения профиля **не нужно** перезапускать — `_build_profile_text()` кэшируется
+в памяти процесса (`@lru_cache`), но при следующем запуске контейнера читает файлы заново.
 
 ### Тест матчинга
 
 ```bash
-python -m src.matcher.gemini_matcher --test
+python -m src.matcher.cerebras_matcher --test
 ```
 
 Запускает 3 тестовые вакансии и показывает score + reasoning.
@@ -62,10 +61,16 @@ python -m src.matcher.gemini_matcher --test
 ### Оптимизация расхода контекста
 
 Текущая стратегия (менять осторожно):
-- Батч: 10 вакансий за запрос (`_BATCH_SIZE = 10` в claude_matcher.py)
-- Профиль кэшируется через `cache_control: ephemeral`
-- Pre-filter отсекает нерелевантные до Claude (`src/matcher/pre_filter.py`)
-- Результаты кэшируются в SQLite — одна вакансия не оценивается дважды
+- Батч: 5 вакансий за запрос (`_BATCH_SIZE = 5` в `cerebras_matcher.py`,
+  совпадает с `matching.batch_size` в `config/settings.yaml`)
+- Профиль кэшируется в памяти процесса через `@lru_cache(maxsize=1)` на
+  `_build_profile_text()` — не путать с серверным prompt caching API
+- Pre-filter отсекает нерелевантные до AI (`src/matcher/pre_filter.py`)
+- Результаты кэшируются в SQLite (`storage.get_cached_match`/`save_match`) —
+  одна вакансия не оценивается дважды
+- Чекпоинт после каждого батча в `data/matches.jsonl` — безопасный рестарт без
+  повторной обработки
 
-**Why:** Gemini 2.0 Flash бесплатен до 1M токенов/день.
-SQLite-кэш результатов — каждая вакансия оценивается один раз и больше не тратит лимит.
+**Why:** Cerebras inference бесплатен на free tier (модель задаётся через
+`CEREBRAS_MODEL` в `.env`, см. `.env.example`). SQLite-кэш результатов —
+каждая вакансия оценивается один раз и больше не тратит лимит.
