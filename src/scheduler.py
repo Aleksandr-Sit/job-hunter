@@ -53,6 +53,7 @@ def _build_parsers(cfg: dict) -> list:
     from .parsers.web.remote3 import Remote3Parser
     from .parsers.web.wellfound import WellFoundParser
     from .parsers.web.contra import ContraParser
+    from .parsers.web.ashby import AshbyParser
     from .parsers.web.greenhouse import GreenhouseParser
     from .parsers.web.lever import LeverParser
     from .parsers.web.linkedin import LinkedInParser
@@ -76,6 +77,8 @@ def _build_parsers(cfg: dict) -> list:
         parsers.append(WellFoundParser())
     if parsers_cfg.get("contra", {}).get("enabled", False):
         parsers.append(ContraParser())
+    if parsers_cfg.get("ashby", {}).get("enabled", True):
+        parsers.append(AshbyParser())
     if parsers_cfg.get("greenhouse", {}).get("enabled", True):
         parsers.append(GreenhouseParser())
     if parsers_cfg.get("lever", {}).get("enabled", True):
