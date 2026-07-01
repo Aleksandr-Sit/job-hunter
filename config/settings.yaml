@@ -74,12 +74,26 @@ parsers:
       # Добавлены (проверены через API)
       - { slug: "bitgo",           name: "BitGo" }          # ~46 вакансий
       - { slug: "bitpanda",        name: "Bitpanda" }       # ~47 вакансий
+      # VC portfolio aggregators
+      - { slug: "a16zcryptoteam",  name: "a16z Crypto Portfolio" }
+
+  ashby:
+    enabled: true
+    companies:
+      # Биржи
+      - { slug: "kraken.com",      name: "Kraken" }          # мигрировали с Lever
+      # Инфраструктура / кошельки
+      - { slug: "ledger",          name: "Ledger" }
+      - { slug: "trust-wallet",    name: "Trust Wallet" }
+      # Стейкинг / операции
+      - { slug: "p2p.org",         name: "P2P.org" }
+      # VC portfolio aggregators
+      - { slug: "Paradigm",        name: "Paradigm Portfolio" }
 
   lever:
     enabled: true
     companies:
       # Биржи / крупные игроки
-      - { slug: "kraken",          name: "Kraken" }
       - { slug: "binance",         name: "Binance" }        # ~361 вакансия
       # Инфраструктура / кастодия
       - { slug: "celestia",        name: "Celestia" }
