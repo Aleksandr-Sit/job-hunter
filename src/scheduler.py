@@ -91,6 +91,20 @@ def _build_parsers(cfg: dict) -> list:
     return parsers
 
 
+def _send_zero_alert(total: int, unseen: int, prefiltered: int, matched: int, threshold: int) -> None:
+    from datetime import datetime, timezone
+    ts = datetime.now(timezone.utc).strftime("%H:%M UTC")
+    lines = [f"🔍 <b>Прогон {ts} — вакансий не отправлено</b>"]
+    lines.append(f"Собрано: {total} | Новых: {unseen} | Pre-filter: {prefiltered} | AI ≥{threshold}%: {matched}")
+    if unseen == 0:
+        lines.append("Причина: все уже видели раньше (дедуп)")
+    elif prefiltered == 0:
+        lines.append("Причина: ни одна не прошла pre-filter (роль/домен/стоп-слова)")
+    else:
+        lines.append("Причина: AI оценил ниже порога")
+    send_text("\n".join(lines))
+
+
 def run_once() -> None:
     cfg = _load_config()
     matching_cfg = cfg.get("matching", {})
@@ -137,10 +151,11 @@ def run_once() -> None:
             j.match_reasons = best["reasons"]
             new_jobs.append(j)
 
-    logger.info("After dedup + pre-filter: %d jobs to match", len(new_jobs))
+    logger.info("After dedup: %d unseen | After pre-filter: %d to AI", len(unseen), len(new_jobs))
 
     if not new_jobs:
         logger.info("No new relevant jobs found.")
+        _send_zero_alert(total_parsed, len(unseen), 0, 0, threshold)
         return
 
     # 3. AI матчинг
@@ -148,6 +163,7 @@ def run_once() -> None:
     logger.info("Matched %d jobs above threshold %d%%", len(matched), threshold)
 
     if not matched:
+        _send_zero_alert(total_parsed, len(unseen), len(new_jobs), 0, threshold)
         return
 
     # 4. Отправка в Telegram
