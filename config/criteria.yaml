@@ -126,7 +126,8 @@ weights:
 # ── Критерии по ролям ──────────────────────────────────────────────────────
 roles:
   crypto_ops:
-    threshold: 55
+    threshold: 45   # калибровка по данным (docs/PREFILTER_AUDIT.md): 55 > базы
+                    # «гейт 10 + сильный тайтл 40 = 50» — резало идеальные тайтлы
     english_weight: 1.0    # для ops английский менее критичен в ежедневной работе
     must_role: ["operations", "ops", "operational"]
     must_domain:
@@ -196,6 +197,9 @@ roles:
       - "business development"
       - "cold calling"
       - "phone support"
+    # Лидерские термины — только по ЗАГОЛОВКУ: «you will lead», «reporting to
+    # the Team Lead» в описании — не лидерская роль (docs/PREFILTER_AUDIT.md §5.2)
+    keywords_penalize_title:
       - "head of"
       - "director"
       - "vp of"
@@ -206,7 +210,7 @@ roles:
     senior_terms: ["senior", "sr."]
 
   web3_support:
-    threshold: 55
+    threshold: 45
     english_weight: 1.6     # Support — коммуникационная роль, английский решает
     must_role:
       - "support"
@@ -287,6 +291,7 @@ roles:
       - "phone support"
       - "voice support"
       - "call center"
+    keywords_penalize_title:
       - "head of"
       - "director"
       - "lead"
@@ -299,7 +304,7 @@ roles:
   # Кандидат — новичок (Claude Code с июня 2026), поэтому keywords_penalize
   # отсекает тяжёлые ML/research-роли не по его профилю, а не junior-позиции.
   ai_automation:
-    threshold: 55
+    threshold: 45
     english_weight: 1.2
     must_role: ["automation", "ai agent", "ai workflow", "no-code", "low-code", "rpa"]
     must_domain: []
@@ -344,6 +349,7 @@ roles:
       - "phd"
       - "computer vision"
       - "deep learning"
+    keywords_penalize_title:
       - "head of"
       - "director"
       - "lead"

@@ -187,6 +187,13 @@ def score_vacancy(title: str, text: str, role_key: str) -> dict:
         sub = max(npz * _W["penalize_each"], _W["penalize_cap"])
         score += sub; reasons.append(f"{sub} нерелевантные/несоответствующие: {', '.join(fpz[:6])}")
 
+    # Лидерские термины штрафуют только в заголовке: «you will lead» в описании
+    # — не лидерская роль (калибровка, docs/PREFILTER_AUDIT.md §5.2)
+    npt, fpt = _hits(role.get("keywords_penalize_title", []), _n(title))
+    if npt:
+        sub = max(npt * _W["penalize_each"], _W["penalize_cap"])
+        score += sub; reasons.append(f"{sub} лидерская роль в заголовке: {', '.join(fpt[:4])}")
+
     if _hits(role["senior_terms"], _n(title))[0]:
         score += _W["senior"]; reasons.append("senior-уровень (мягкий штраф)")
 
