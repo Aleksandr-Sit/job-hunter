@@ -158,7 +158,9 @@ def _get_client() -> OpenAI:
     return OpenAI(**kwargs)
 
 
-def match_batch(jobs: list[Job], client: Optional[OpenAI] = None) -> list[MatchResult]:
+def match_batch(jobs: list[Job], client: Optional[OpenAI] = None) -> Optional[list[MatchResult]]:
+    """Возвращает список результатов, либо None при сбое API/парсинга ответа.
+    None означает «батч НЕ оценён» — вызывающий не должен считать это отказом."""
     if not jobs:
         return []
 
@@ -204,22 +206,22 @@ def match_batch(jobs: list[Job], client: Optional[OpenAI] = None) -> list[MatchR
                 time.sleep(wait)
             else:
                 logger.error("Cerebras error (attempt %d): %s", attempt, e)
-                return []
+                return None
 
     if raw is None:
-        return []
+        return None
 
     start = raw.find("[")
     end = raw.rfind("]") + 1
     if start == -1 or end == 0:
         logger.error("Cerebras returned non-JSON: %s", raw[:300])
-        return []
+        return None
 
     try:
         data = json.loads(raw[start:end])
     except json.JSONDecodeError as e:
         logger.error("JSON parse error: %s | raw: %s", e, raw[:300])
-        return []
+        return None
 
     results = []
     for item in data:
@@ -239,19 +241,27 @@ def match_batch(jobs: list[Job], client: Optional[OpenAI] = None) -> list[MatchR
 
 
 def match_jobs(jobs: list[Job], threshold: int = 65, batch_size: int = _BATCH_SIZE) -> list[tuple[Job, MatchResult]]:
-    """Матчит все вакансии батчами, возвращает только те что >= threshold."""
+    """Матчит все вакансии батчами, возвращает только те что >= threshold.
+
+    Помечает вакансии seen только ПОСЛЕ вердикта (кэш или успешный батч):
+    сбойный батч остаётся неотмеченным и вернётся на следующем прогоне."""
     client = _get_client()
 
     to_match: list[Job] = []
+    cached_jobs: list[Job] = []
     cached_results: list[tuple[Job, MatchResult]] = []
 
     for job in jobs:
         cached = storage.get_cached_match(job.id)
         if cached:
+            cached_jobs.append(job)
             if cached.score >= threshold:
                 cached_results.append((job, cached))
         else:
             to_match.append(job)
+
+    # у кэшированных вердикт уже есть
+    storage.mark_seen_batch(cached_jobs)
 
     _MATCHES_JSONL.parent.mkdir(parents=True, exist_ok=True)
 
@@ -266,7 +276,12 @@ def match_jobs(jobs: list[Job], threshold: int = 65, batch_size: int = _BATCH_SI
         try:
             results = match_batch(batch, client)
         except _AIGeoBlockError:
-            break  # 403 — прекращаем все батчи, не тратим время
+            break  # 403 — прекращаем все батчи; неотмеченные вернутся в след. прогон
+        if results is None:
+            logger.error("Batch %d/%d failed — %d jobs left unseen, will retry next run",
+                         batch_idx, total_batches, len(batch))
+            continue
+        storage.mark_seen_batch(batch)
         with _MATCHES_JSONL.open("a", encoding="utf-8") as f:
             for r in results:
                 storage.save_match(r)
