@@ -142,7 +142,6 @@ def run_once() -> None:
     # 2. Дедупликация + pre-filter (батчевые запросы к БД)
     seen_ids = storage.is_seen_batch([j.id for j in all_jobs])
     unseen = [j for j in all_jobs if j.id not in seen_ids]
-    storage.mark_seen_batch(unseen)
     new_jobs = []
     near_miss = []
     for j in unseen:
@@ -153,6 +152,11 @@ def run_once() -> None:
             new_jobs.append(j)
         elif best["passed_gate"] and best["score"] >= 40:
             near_miss.append((best["score"], j, best["reasons"]))
+
+    # seen сразу — только детерминированно отсеянное; кандидатов в AI помечает
+    # match_jobs после успешного скоринга батча, чтобы сбой AI не терял вакансии
+    ai_ids = {j.id for j in new_jobs}
+    storage.mark_seen_batch([j for j in unseen if j.id not in ai_ids])
 
     logger.info("After dedup: %d unseen | After pre-filter: %d to AI", len(unseen), len(new_jobs))
     # Пограничные вакансии — чтобы пересев был виден в логе без ручной диагностики
