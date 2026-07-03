@@ -14,6 +14,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src/ ./src/
 COPY config/ ./config/
+# Read-only диагностика (/diagnose): запускается через docker exec, не пайплайном
+COPY tools/ ./tools/
 
 # data/ монтируется как volume (SQLite + логи)
 RUN mkdir -p data/logs
