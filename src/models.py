@@ -37,7 +37,9 @@ class Job:
             f"Title: {self.title}\n"
             f"Company: {self.company}\n"
             f"{salary}{location}{remote}{tags}"
-            f"Description:\n{self.description[:500]}"
+            # 1200, не 500: требования/remote/зарплата часто ниже по тексту, а
+            # pre-filter судит по полному описанию — окна должны совпадать (PIPELINE_REVIEW.md P2/M2)
+            f"Description:\n{self.description[:1200]}"
         )
 
 
