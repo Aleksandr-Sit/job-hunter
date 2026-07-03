@@ -144,14 +144,20 @@ def run_once() -> None:
     unseen = [j for j in all_jobs if j.id not in seen_ids]
     storage.mark_seen_batch(unseen)
     new_jobs = []
+    near_miss = []
     for j in unseen:
         best = score_job(j)["best"]
         if best["passed_gate"] and best["recommend"]:
             j.match_role = best["role"]
             j.match_reasons = best["reasons"]
             new_jobs.append(j)
+        elif best["passed_gate"] and best["score"] >= 40:
+            near_miss.append((best["score"], j, best["reasons"]))
 
     logger.info("After dedup: %d unseen | After pre-filter: %d to AI", len(unseen), len(new_jobs))
+    # Пограничные вакансии — чтобы пересев был виден в логе без ручной диагностики
+    for s, j, rs in sorted(near_miss, key=lambda x: -x[0])[:3]:
+        logger.info("Near-miss [%d] %s @ %s | %s", s, j.title[:60], j.company[:30], "; ".join(rs)[:150])
 
     if not new_jobs:
         logger.info("No new relevant jobs found.")
