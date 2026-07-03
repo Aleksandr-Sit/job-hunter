@@ -71,6 +71,22 @@ _FOREIGN_LANG_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# «Spanish is a plus» — не требование: не блокируем, если рядом сигнал желательности
+_LANG_PLUS_PATTERN = re.compile(
+    r'(is\s+a\s+plus|as\s+a\s+plus|nice[\s-]to[\s-]have|would\s+be\s+a\s+plus|'
+    r'advantage|beneficial|preferred|bonus|плюсом|преимуществ|приветствуется|желательно)',
+    re.IGNORECASE,
+)
+
+
+def _foreign_lang_required(blob: str) -> bool:
+    """True, если иностранный язык требуется (а не «будет плюсом»)."""
+    for m in _FOREIGN_LANG_PATTERN.finditer(blob):
+        window = blob[max(0, m.start() - 60): m.end() + 60]
+        if not _LANG_PLUS_PATTERN.search(window):
+            return True  # хотя бы одно упоминание без пометки «плюс» — как требование
+    return False
+
 
 def _load_criteria() -> dict:
     return yaml.safe_load(_CRITERIA_FILE.read_text(encoding="utf-8"))
@@ -127,7 +143,7 @@ def _extra_hard_gates(title: str, text: str, role_key: str) -> str | None:
     if _HIGH_EXP_PATTERN.search(blob):
         return "требуется 7+ лет опыта"
 
-    if _FOREIGN_LANG_PATTERN.search(blob):
+    if _foreign_lang_required(blob):
         return "требуется язык кроме ru/en"
 
     return None

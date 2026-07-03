@@ -191,6 +191,8 @@ roles:
       - "aml"
       - "trading"
       - "async"
+      - "on-chain"
+      - "onchain"
     keywords_penalize:
       - "sales"
       - "account executive"

@@ -112,6 +112,21 @@ def _compact_resume(text: str) -> str:
     return "\n".join(result).strip()
 
 
+_CRITERIA_FILE = Path(__file__).parent.parent.parent / "config" / "criteria.yaml"
+
+
+@lru_cache(maxsize=1)
+def _scoring_version() -> str:
+    """Отпечаток промпта+профиля+критериев. Меняется — кэш баллов инвалидируется."""
+    import hashlib
+    try:
+        criteria = _CRITERIA_FILE.read_text(encoding="utf-8")
+    except OSError:
+        criteria = ""
+    blob = _SYSTEM_INSTRUCTION + _build_profile_text() + criteria
+    return hashlib.md5(blob.encode("utf-8")).hexdigest()[:12]
+
+
 @lru_cache(maxsize=1)
 def _build_profile_text() -> str:
     resume_full = (_PROFILE_DIR / "resume.md").read_text(encoding="utf-8")
@@ -246,13 +261,14 @@ def match_jobs(jobs: list[Job], threshold: int = 65, batch_size: int = _BATCH_SI
     Помечает вакансии seen только ПОСЛЕ вердикта (кэш или успешный батч):
     сбойный батч остаётся неотмеченным и вернётся на следующем прогоне."""
     client = _get_client()
+    version = _scoring_version()
 
     to_match: list[Job] = []
     cached_jobs: list[Job] = []
     cached_results: list[tuple[Job, MatchResult]] = []
 
     for job in jobs:
-        cached = storage.get_cached_match(job.id)
+        cached = storage.get_cached_match(job.id, version)
         if cached:
             cached_jobs.append(job)
             if cached.score >= threshold:
@@ -284,7 +300,7 @@ def match_jobs(jobs: list[Job], threshold: int = 65, batch_size: int = _BATCH_SI
         storage.mark_seen_batch(batch)
         with _MATCHES_JSONL.open("a", encoding="utf-8") as f:
             for r in results:
-                storage.save_match(r)
+                storage.save_match(r, version)
                 f.write(json.dumps({
                     "job_id": r.job_id, "score": r.score,
                     "why_fits": r.why_fits, "watch_out": r.watch_out,
