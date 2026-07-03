@@ -38,6 +38,12 @@ def init_db() -> None:
                 matched_at TEXT NOT NULL
             );
         """)
+        # Миграция: версия скоринга (промпт+профиль+критерии). Кэш с другой
+        # версией считается устаревшим и пересчитывается — иначе смена критериев
+        # оставляла бы старые баллы навсегда (PIPELINE_REVIEW.md M1).
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(match_cache)")}
+        if "scoring_version" not in cols:
+            conn.execute("ALTER TABLE match_cache ADD COLUMN scoring_version TEXT")
 
 
 def is_seen_batch(job_ids: list) -> set:
@@ -62,10 +68,14 @@ def mark_seen_batch(jobs: list) -> None:
         )
 
 
-def get_cached_match(job_id: str) -> Optional[MatchResult]:
+def get_cached_match(job_id: str, version: Optional[str] = None) -> Optional[MatchResult]:
+    """Кэш-хит только если версия скоринга совпадает. version=None — без проверки
+    (обратная совместимость). Иная версия трактуется как промах → пересчёт."""
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM match_cache WHERE job_id = ?", (job_id,)).fetchone()
         if not row:
+            return None
+        if version is not None and row["scoring_version"] != version:
             return None
         return MatchResult(
             job_id=row["job_id"],
@@ -76,12 +86,12 @@ def get_cached_match(job_id: str) -> Optional[MatchResult]:
         )
 
 
-def save_match(result: MatchResult) -> None:
+def save_match(result: MatchResult, version: Optional[str] = None) -> None:
     with get_conn() as conn:
         conn.execute(
             """INSERT OR REPLACE INTO match_cache
-               (job_id, score, why_fits, watch_out, recommendation, matched_at)
-               VALUES (?,?,?,?,?,?)""",
+               (job_id, score, why_fits, watch_out, recommendation, matched_at, scoring_version)
+               VALUES (?,?,?,?,?,?,?)""",
             (
                 result.job_id,
                 result.score,
@@ -89,5 +99,6 @@ def save_match(result: MatchResult) -> None:
                 json.dumps(result.watch_out, ensure_ascii=False),
                 result.recommendation,
                 datetime.now(timezone.utc).isoformat(),
+                version,
             ),
         )
