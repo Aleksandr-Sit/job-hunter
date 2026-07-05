@@ -12,12 +12,16 @@ logger = logging.getLogger(__name__)
 async def _on_skip(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer(text="Пропущено")
-    # Снимаем клавиатуру (не удаляем сообщение): delete_message ограничен 48ч и
-    # падает BadRequest на старых карточках; edit_reply_markup такого лимита не имеет
+    # Сначала пытаемся удалить сообщение целиком (чистит ленту). Telegram запрещает
+    # ботам удалять сообщения старше 48ч → на BadRequest откатываемся на снятие
+    # клавиатуры, чтобы старые карточки хотя бы теряли кнопки без ошибки.
     try:
-        await query.edit_message_reply_markup(reply_markup=None)
-    except telegram.error.BadRequest as e:
-        logger.debug("Skip: клавиатуру снять не удалось (%s)", e)
+        await query.delete_message()
+    except telegram.error.BadRequest:
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except telegram.error.BadRequest as e:
+            logger.debug("Skip: ни удалить, ни снять клавиатуру (%s)", e)
 
 
 async def _on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
