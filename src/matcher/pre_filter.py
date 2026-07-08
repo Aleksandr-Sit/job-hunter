@@ -1,5 +1,7 @@
+import hashlib
 import json
 import re
+from functools import lru_cache
 from pathlib import Path
 
 import yaml
@@ -102,6 +104,21 @@ AVOID_KW = _load_avoid_keywords()
 _W = CRITERIA["weights"]
 
 
+@lru_cache(maxsize=1)
+def _prefilter_version() -> str:
+    """Отпечаток критериев + логики фильтра. Меняется — pre-filter-отказы в
+    seen_jobs считаются устаревшими и переоцениваются (зеркало _scoring_version
+    для AI-кэша). Хешируем criteria.yaml (главный рычаг) и собственный исходник
+    (правки логики гейтов деплоятся вместе с кодом)."""
+    try:
+        criteria = _CRITERIA_FILE.read_text(encoding="utf-8")
+    except OSError:
+        criteria = ""
+    source = Path(__file__).read_text(encoding="utf-8")
+    blob = criteria + source
+    return hashlib.md5(blob.encode("utf-8")).hexdigest()[:12]
+
+
 def _matches(term: str, text: str) -> bool:
     """Слово целиком для простых токенов, подстрока — для фраз со спецсимволами."""
     if re.fullmatch(r"[a-zа-я0-9.\- ]+", term) and " " not in term and "." not in term:
@@ -186,7 +203,8 @@ def score_vacancy(title: str, text: str, role_key: str) -> dict:
     score = _W["gate_base"]
     reasons = []
 
-    if _hits(role["titles_strong"], blob)[0]:
+    title_is_strong = _hits(role["titles_strong"], blob)[0]
+    if title_is_strong:
         score += _W["title_strong"]; reasons.append("сильное совпадение по должности")
     elif _hits(role["titles_weak"], blob)[0]:
         score += _W["title_weak"]; reasons.append("смежная должность")
@@ -210,7 +228,10 @@ def score_vacancy(title: str, text: str, role_key: str) -> dict:
         sub = max(npt * _W["penalize_each"], _W["penalize_cap"])
         score += sub; reasons.append(f"{sub} лидерская роль в заголовке: {', '.join(fpt[:4])}")
 
-    if _hits(role["senior_terms"], _n(title))[0]:
+    # Senior-штраф не рубит прицельный ops-тайтл: «Senior Operations Specialist» —
+    # это профильная роль, а не «слишком старшая». gate_base+title_strong=50, штраф
+    # −6 ронял такие на 44 < порога (Ripple/Coinbase/Soberin ops, DIAGNOSE 08.07).
+    if not title_is_strong and _hits(role["senior_terms"], _n(title))[0]:
         score += _W["senior"]; reasons.append("senior-уровень (мягкий штраф)")
 
     reloc = _hits(CRITERIA["relocation_ok"], blob)[0]

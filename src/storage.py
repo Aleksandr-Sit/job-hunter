@@ -45,26 +45,68 @@ def init_db() -> None:
         if "scoring_version" not in cols:
             conn.execute("ALTER TABLE match_cache ADD COLUMN scoring_version TEXT")
 
+        # Миграция: версия pre-filter для seen_jobs. NULL = финальный вердикт
+        # (AI оценил / отправлено), seen навсегда. Непустое значение = провизорный
+        # отказ pre-filter под этим отпечатком: устаревает при смене критериев и
+        # снова попадает в воронку (PREFILTER_AUDIT.md §5.3). Существующие строки
+        # получают NULL = вердикт — версионирование действует для новых отказов.
+        seen_cols = {r["name"] for r in conn.execute("PRAGMA table_info(seen_jobs)")}
+        if "prefilter_version" not in seen_cols:
+            conn.execute("ALTER TABLE seen_jobs ADD COLUMN prefilter_version TEXT")
 
-def is_seen_batch(job_ids: list) -> set:
+
+def is_seen_batch(job_ids: list, prefilter_version: Optional[str] = None) -> set:
+    """Строки, которые нужно считать seen (исключить из воронки).
+
+    prefilter_version=None — обратная совместимость: любая строка = seen.
+    Иначе seen = финальный вердикт (prefilter_version IS NULL) ИЛИ провизорный
+    отказ под ТЕКУЩИМ отпечатком. Отказы со старым отпечатком → не seen (смена
+    критериев автоматически переоткрывает их, PREFILTER_AUDIT.md §5.3)."""
     if not job_ids:
         return set()
     placeholders = ",".join("?" * len(job_ids))
     with get_conn() as conn:
-        rows = conn.execute(
-            f"SELECT id FROM seen_jobs WHERE id IN ({placeholders})", job_ids
-        ).fetchall()
+        if prefilter_version is None:
+            rows = conn.execute(
+                f"SELECT id FROM seen_jobs WHERE id IN ({placeholders})", job_ids
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                f"SELECT id FROM seen_jobs WHERE id IN ({placeholders}) "
+                "AND (prefilter_version IS NULL OR prefilter_version = ?)",
+                [*job_ids, prefilter_version],
+            ).fetchall()
     return {row["id"] for row in rows}
 
 
 def mark_seen_batch(jobs: list) -> None:
+    """Финальный вердикт: prefilter_version = NULL, seen навсегда. Апгрейдит
+    провизорный отказ до вердикта, если вакансия дошла до AI-скоринга."""
     if not jobs:
         return
     now = datetime.now(timezone.utc).isoformat()
     with get_conn() as conn:
         conn.executemany(
-            "INSERT OR IGNORE INTO seen_jobs (id, source, title, url, seen_at) VALUES (?,?,?,?,?)",
+            "INSERT INTO seen_jobs (id, source, title, url, seen_at, prefilter_version) "
+            "VALUES (?,?,?,?,?,NULL) "
+            "ON CONFLICT(id) DO UPDATE SET prefilter_version=NULL, seen_at=excluded.seen_at",
             [(j.id, j.source, j.title, j.url, now) for j in jobs],
+        )
+
+
+def mark_prefilter_seen(jobs: list, version: str) -> None:
+    """Провизорный отказ pre-filter под отпечатком version. Не понижает
+    существующий вердикт (prefilter_version IS NULL остаётся NULL)."""
+    if not jobs:
+        return
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        conn.executemany(
+            "INSERT INTO seen_jobs (id, source, title, url, seen_at, prefilter_version) "
+            "VALUES (?,?,?,?,?,?) "
+            "ON CONFLICT(id) DO UPDATE SET prefilter_version=excluded.prefilter_version, "
+            "seen_at=excluded.seen_at WHERE seen_jobs.prefilter_version IS NOT NULL",
+            [(j.id, j.source, j.title, j.url, now, version) for j in jobs],
         )
 
 

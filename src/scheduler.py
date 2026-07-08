@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 
 from .models import Job
 from . import storage
-from .matcher.pre_filter import score_job
+from .matcher.pre_filter import score_job, _prefilter_version
 from .matcher.cerebras_matcher import match_jobs
 from .bot.notifier import send_jobs_batch, send_daily_summary, send_text
 from .bot.callback_handler import run_listener
@@ -140,7 +140,10 @@ def run_once() -> None:
     logger.info("Total fetched: %d", total_parsed)
 
     # 2. Дедупликация + pre-filter (батчевые запросы к БД)
-    seen_ids = storage.is_seen_batch([j.id for j in all_jobs])
+    # Версия pre-filter: отказы под старым отпечатком трактуются как unseen и
+    # переоцениваются автоматически при смене критериев (PREFILTER_AUDIT.md §5.3).
+    pf_version = _prefilter_version()
+    seen_ids = storage.is_seen_batch([j.id for j in all_jobs], prefilter_version=pf_version)
     unseen = [j for j in all_jobs if j.id not in seen_ids]
     new_jobs = []
     near_miss = []
@@ -153,10 +156,11 @@ def run_once() -> None:
         elif best["passed_gate"] and best["score"] >= 40:
             near_miss.append((best["score"], j, best["reasons"]))
 
-    # seen сразу — только детерминированно отсеянное; кандидатов в AI помечает
-    # match_jobs после успешного скоринга батча, чтобы сбой AI не терял вакансии
+    # Провизорный seen — только детерминированно отсеянное, с отпечатком версии:
+    # смена критериев переоткроет эти отказы. Кандидатов в AI помечает match_jobs
+    # финальным вердиктом после успешного скоринга батча (сбой AI не теряет вакансии).
     ai_ids = {j.id for j in new_jobs}
-    storage.mark_seen_batch([j for j in unseen if j.id not in ai_ids])
+    storage.mark_prefilter_seen([j for j in unseen if j.id not in ai_ids], pf_version)
 
     logger.info("After dedup: %d unseen | After pre-filter: %d to AI", len(unseen), len(new_jobs))
     # Пограничные вакансии — чтобы пересев был виден в логе без ручной диагностики

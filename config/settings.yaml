@@ -1,7 +1,8 @@
 # Основные настройки Job Hunter
 
 matching:
-  threshold: 65          # минимальный score для отправки в Telegram
+  threshold: 58          # минимальный score для отправки в Telegram (было 65:
+                         # открыт диапазон 55-64 частичных матчей, DIAGNOSE 08.07)
   batch_size: 5          # вакансий за один запрос к Cerebras (500 chars × 5 ≈ 3k токенов/батч)
 
 scheduler:
@@ -76,6 +77,13 @@ parsers:
       - { slug: "bitpanda",        name: "Bitpanda" }       # ~47 вакансий
       # VC portfolio aggregators
       - { slug: "a16zcryptoteam",  name: "a16z Crypto Portfolio" }
+      # Добавлены по данным (SOURCES_AUDIT §8, проба fetch'ем с VPS 08.07)
+      - { slug: "blockchain",      name: "Blockchain.com" }  # ~35, много ops
+      - { slug: "ondofinance",     name: "Ondo Finance" }    # RWA/DeFi
+      - { slug: "layerzerolabs",   name: "LayerZero" }
+      - { slug: "aptoslabs",       name: "Aptos" }
+      - { slug: "b2c2",            name: "B2C2" }            # OTC, compliance
+      - { slug: "figment",         name: "Figment" }        # staking-ops
 
   ashby:
     enabled: true
@@ -89,6 +97,11 @@ parsers:
       - { slug: "p2p.org",         name: "P2P.org" }
       # VC portfolio aggregators
       - { slug: "Paradigm",        name: "Paradigm Portfolio" }
+      # Добавлены по данным (SOURCES_AUDIT §8, проба fetch'ем с VPS 08.07)
+      - { slug: "Polymarket",      name: "Polymarket" }     # ~55, AML/compliance/ops
+      - { slug: "stellar",         name: "Stellar" }
+      - { slug: "alchemy",         name: "Alchemy" }
+      - { slug: "turnkey",         name: "Turnkey" }
 
   lever:
     enabled: true
