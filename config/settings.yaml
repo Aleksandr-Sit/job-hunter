@@ -126,6 +126,8 @@ parsers:
       - { slug: "1inch",           name: "1inch" }          # ~4 вакансии
       # Гейминг / NFT
       - { slug: "animocabrands",   name: "Animoca Brands" } # ~6 вакансий
+      # Биржа (был ручным; часть ролей на кит. — режется гейтом языка)
+      - { slug: "gate",            name: "Gate.io" }        # ~19, ops/KYC
 
   linkedin:
     enabled: true
