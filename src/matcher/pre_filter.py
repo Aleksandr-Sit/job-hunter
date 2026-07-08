@@ -203,7 +203,8 @@ def score_vacancy(title: str, text: str, role_key: str) -> dict:
     score = _W["gate_base"]
     reasons = []
 
-    if _hits(role["titles_strong"], blob)[0]:
+    title_is_strong = _hits(role["titles_strong"], blob)[0]
+    if title_is_strong:
         score += _W["title_strong"]; reasons.append("сильное совпадение по должности")
     elif _hits(role["titles_weak"], blob)[0]:
         score += _W["title_weak"]; reasons.append("смежная должность")
@@ -227,7 +228,10 @@ def score_vacancy(title: str, text: str, role_key: str) -> dict:
         sub = max(npt * _W["penalize_each"], _W["penalize_cap"])
         score += sub; reasons.append(f"{sub} лидерская роль в заголовке: {', '.join(fpt[:4])}")
 
-    if _hits(role["senior_terms"], _n(title))[0]:
+    # Senior-штраф не рубит прицельный ops-тайтл: «Senior Operations Specialist» —
+    # это профильная роль, а не «слишком старшая». gate_base+title_strong=50, штраф
+    # −6 ронял такие на 44 < порога (Ripple/Coinbase/Soberin ops, DIAGNOSE 08.07).
+    if not title_is_strong and _hits(role["senior_terms"], _n(title))[0]:
         score += _W["senior"]; reasons.append("senior-уровень (мягкий штраф)")
 
     reloc = _hits(CRITERIA["relocation_ok"], blob)[0]

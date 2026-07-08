@@ -1,7 +1,8 @@
 # Основные настройки Job Hunter
 
 matching:
-  threshold: 65          # минимальный score для отправки в Telegram
+  threshold: 58          # минимальный score для отправки в Telegram (было 65:
+                         # открыт диапазон 55-64 частичных матчей, DIAGNOSE 08.07)
   batch_size: 5          # вакансий за один запрос к Cerebras (500 chars × 5 ≈ 3k токенов/батч)
 
 scheduler:
