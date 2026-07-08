@@ -65,6 +65,25 @@ english_boost:
   - "снг"
   - "ru community"
 
+# Entry/обучающие роли — низкий барьер входа = самый конверсионный сегмент для
+# кандидата (6-8 мес подушки, готов на меньший старт в компании, которая обучает).
+# Повышает балл роли, ГЕЙТ не трогает (гарантия ops/support уже в must_role).
+entry_boost:
+  - "junior"
+  - "entry level"
+  - "entry-level"
+  - "graduate"
+  - "trainee"
+  - "no experience"
+  - "no prior experience"
+  - "will train"
+  - "training provided"
+  - "apprentice"
+  - "младший"
+  - "стажёр"
+  - "стажер"
+  - "без опыта"
+
 remote_boost:
   - "remote"
   - "fully remote"
@@ -122,6 +141,7 @@ weights:
   onsite: -18
   english_penalty_each: -14
   english_boost: 10
+  entry: 8            # entry/junior/обучающие роли — низкий барьер, целевой сегмент
 
 # ── Критерии по ролям ──────────────────────────────────────────────────────
 roles:
@@ -162,10 +182,13 @@ roles:
       - "crypto ops"
       - "operations specialist"
       - "operations associate"
+      - "customer operations"
     titles_weak:
       - "operations analyst"
       - "business operations"
       - "operations coordinator"
+      - "operations officer"
+      - "operations executive"
       - "payment operations"
       - "payments operations"
       - "compliance operations"
@@ -251,6 +274,7 @@ roles:
       - "support specialist"
       - "support agent"
       - "support representative"
+      - "player support"
       - "trust and safety"
       - "trust & safety"
     titles_weak:
