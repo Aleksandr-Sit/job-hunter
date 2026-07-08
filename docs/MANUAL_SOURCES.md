@@ -11,8 +11,8 @@
 | **HH.ru** | 20 поисковых запросов, официальный API |
 | **Telegram-каналы** | remote_jobs_ru, cryptoheadhunter, holder_job_devs, remoteweb3jobs, workers_tg, cryptovakansii, workingincrypto, opento_crypto, cryptojobslist, cryptojobsh, web3vacancy, web3hiring |
 | **Web-борды** | remoteok.com, cryptojobslist.com, laborx.com, remote3.co |
-| **ATS Greenhouse** | OKX, Gemini, Fireblocks, Ripple, Consensys, Coinbase, BitGo, Bitpanda, a16z Crypto Portfolio |
-| **ATS Ashby** | Kraken, Ledger, Trust Wallet, P2P.org, Paradigm Portfolio |
+| **ATS Greenhouse** | OKX, **Bybit**, Gemini, Fireblocks, Ripple, Consensys, Coinbase, BitGo, Bitpanda, a16z, Blockchain.com, Ondo, LayerZero, Aptos, B2C2, Figment |
+| **ATS Ashby** | Kraken, Ledger, Trust Wallet, P2P.org, Paradigm, Polymarket, Stellar, Alchemy, Turnkey |
 | **ATS Lever** | Binance, Celestia, Anchorage Digital, MoonPay, Safe, Gauntlet, 1inch, Animoca Brands |
 
 ---
@@ -126,23 +126,12 @@ AI automation-роли тоже встречаются.
 
 ---
 
-### 2.4 Bybit Careers
+### 2.4 ~~Bybit Careers~~ → ✅ АВТОМАТИЗИРОВАН (08.07.2026)
 
-**Где:** https://www.bybit.com/en/promo/global/careers
-
-**Почему ценен:** один из крупнейших мировых криптобирж (~70 млн пользователей),
-не покрытый ни одним из наших ATS-парсеров. Регулярно открывает operations, support
-и CIS-специализированные роли (пример: «CIS Social Media Specialist» в Дубае).
-
-**Почему вручную:** кастомная карьерная страница без стандартного ATS-API.
-
-**Ритм:** 2–3 раза в неделю (пополняется активно).
-
-**Время:** 5 мин.
-
-**Что смотреть:** поиск по «operations», «support», «CIS», «community». Страница
-может быть медленной — дождись полной загрузки. Зарегистрированные кандидаты
-могут подписаться на email job alerts через кнопку на сайте.
+Проверка с VPS-IP показала: **Bybit на Greenhouse** (`boards-api.greenhouse.io/v1/
+boards/bybit/jobs`, ~129 вакансий, 57 ops/AML/support). Добавлен в `settings.yaml`
+→ бот забирает сам. Ручной просмотр **больше не нужен.** (Аудит 01.07 ошибочно
+считал, что у Bybit нет ATS — опровергнуто живым fetch'ем.)
 
 ---
 
@@ -213,10 +202,12 @@ AI automation-роли тоже встречаются.
 | Источник | Что сделать | Сложность |
 |----------|-------------|-----------|
 | ~~**@g_jobchannel** (getmatch Telegram)~~ | ❌ НЕ добавлять — проверено 08.07: общий RU IT/dev-канал, 0 крипто-вакансий в ленте, шум | — |
-| **cryptocurrencyjobs.co** | HTML-парсер по образцу remote3.py; сначала протестировать с VPS-IP | Средняя |
-| **crypto.jobs** | HTML-парсер; проверить IP-блок | Средняя |
-| **Habr Career** | OAuth 2.0 + регистрация приложения → отдельный спринт | Высокая |
-| **Bybit / Gate.io / Bitget** | Проверить, не завели ли ATS (иногда переходят на Greenhouse/Ashby без анонса) | Низкая (разовая проверка раз в месяц) |
+| **cryptocurrencyjobs.co** | ✅ грузится с VPS (проверено 08.07), но RSS нет → HTML-парсер по образцу remote3.py | Средняя |
+| **crypto.jobs** | ✅ грузится с VPS; sitemap.xml есть → HTML-парсер | Средняя |
+| **Habr Career** | ✅ HTML вакансий грузится с VPS без OAuth → можно скрейпить вместо OAuth-спринта | Средняя |
+| **Bybit** | ✅ **СДЕЛАНО 08.07** — Greenhouse slug `bybit` (129/57 ops) | — |
+| **Gate.io** | ✅ доступен на Lever (`gate`, 19 job, но часть ролей на китайском → шум) | Низкая (1 строка) |
+| **Bitget / KuCoin** | ❌ ATS нет (проверено 08.07: greenhouse/lever/ashby — пусто) → остаются ручными | — |
 
 ---
 
@@ -225,7 +216,7 @@ AI automation-роли тоже встречаются.
 | Режим | Активность | Время |
 |-------|-----------|-------|
 | **Ежедневно** | Email: LinkedIn alerts (пассивно, приходят сами) | ≈ 3 мин пассивно |
-| **3×/неделю** | Bybit + cryptocurrencyjobs.co + crypto.jobs | ≈ 15 мин/нед = 7 мин/нед |
+| **3×/неделю** | cryptocurrencyjobs.co + crypto.jobs | ≈ 10 мин/нед |
 | **2×/неделю** | Habr Career + getmatch.ru сайт | ≈ 10 мин/нед |
 | **1×/неделю** | Discord (оба) + биржи (ротация) | ≈ 20 мин/нед |
 | **Итого** | | **≈ 15–20 мин/день или 35 мин в день старта недели** |
@@ -239,7 +230,6 @@ AI automation-роли тоже встречаются.
 ```
 □ Email — есть письмо от LinkedIn «Новые вакансии»? Просмотреть заголовки.
 □ (пн/ср/пт) cryptocurrencyjobs.co → Operations + Support + Remote
-□ (пн/ср/пт) Bybit careers → поиск "operations"
 □ (вт/чт) getmatch.ru/vacancies/blockchain_crypto → новое за день
 □ (вт/чт) Habr Career → поиск "крипто" + "web3"
 □ (воскресенье) Discord (CryptoJobsList + MarsWork) + Gate.io/Bitget/KuCoin
