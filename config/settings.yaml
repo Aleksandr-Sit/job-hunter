@@ -72,6 +72,7 @@ parsers:
     companies:
       # Биржи
       - { slug: "okx",             name: "OKX" }           # ~250 вакансий
+      - { slug: "bybit",           name: "Bybit" }         # ~129, много ops/AML (был ручным до 08.07)
       - { slug: "gemini",          name: "Gemini" }         # ~27 вакансий
       # Инфраструктура / кастодия
       - { slug: "fireblocks",      name: "Fireblocks" }     # ~58 вакансий
