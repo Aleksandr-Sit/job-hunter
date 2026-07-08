@@ -253,6 +253,10 @@ def score_vacancy(title: str, text: str, role_key: str) -> dict:
         add = int(_W["english_boost"] * ew)
         score += add; reasons.append(f"+{add} русскоязычная/CIS команда")
 
+    # Entry/junior/обучающие роли — целевой сегмент кандидата (низкий барьер)
+    if _hits(CRITERIA.get("entry_boost", []), blob)[0]:
+        score += _W["entry"]; reasons.append(f"+{_W['entry']} entry/junior (низкий барьер)")
+
     score = max(0, min(100, score))
     return {
         "role": role_key,
