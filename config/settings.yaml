@@ -30,6 +30,12 @@ parsers:
       - "Комьюнити менеджер крипто"
       - "Русскоязычная поддержка"
       - "CIS operations"
+      # Entry/junior — целевой сегмент (обучающие роли, низкий барьер)
+      - "Стажёр крипто"
+      - "Младший специалист поддержки"
+      - "Оператор поддержки крипто"
+      - "Junior crypto operations"
+      - "Ассистент операционный"
       # AI automation (любая индустрия)
       - "AI automation specialist"
       - "Automation engineer"
@@ -132,6 +138,11 @@ parsers:
       - "digital asset operations"
       - "crypto community manager"
       - "web3 analyst"
+      # Entry/junior — целевой сегмент
+      - "junior crypto operations"
+      - "operations associate crypto"
+      - "crypto support junior"
+      - "graduate program crypto"
       # CIS / Russian-speaking роли
       - "CIS community manager crypto"
       - "Russian speaking crypto operations"
