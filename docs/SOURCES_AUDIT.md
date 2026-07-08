@@ -249,3 +249,82 @@ ashby:
 4. **Правка** Greenhouse companies list — добавить `a16zcryptoteam`
 5. Проверить `docker-compose up --build`, убедиться что новые источники дают вакансии
 6. Отдельный спринт: Habr Career OAuth (когда будет время)
+
+---
+
+## 8. Ревизия по данным (2026-07-08) — где реально сигнал
+
+Шортлист §4 (Ashby-парсер, a16z, @web3hiring) с 01.07 **реализован**.
+Эта ревизия — не ландшафтные догадки, а **атрибуция по боевой пачке** (1891 ваканс.)
+и **проба slug'ов реальным fetch'ем с датацентр-IP VPS** (сильнее веб-поиска).
+
+### 8.1 Вклад источников в релевантные (≥45) — боевая пачка
+
+| Источник | вакансий | из них ≥45 |
+|---|---|---|
+| **greenhouse** | 763 | **37** |
+| **lever** | 378 | **9** |
+| ashby | 85 | 2 |
+| telegram (все) | ~275 | ~5 |
+| hh.ru | 247 | **1** |
+| remoteok | 100 | 1 |
+| laborx | 38 | 1 |
+| linkedin | 0 (rate-limit) | 0 |
+
+**Вывод:** ~87% релевантных дают ATS-борды (Greenhouse/Lever/Ashby); hh/remoteok/
+laborx/telegram — почти чистый шум. Самый дешёвый и сигнальный рычаг —
+**не новые борды, а больше компаний в ATS-списки** (парсеры уже есть, описания
+полные: 0 empty desc). Новые шумные HTML-борды (crypto.jobs и пр.) — не трогаем.
+
+### 8.2 Проба кандидатов реальным fetch'ем (только живые, с ops-сигналом)
+
+Эндпоинты те же, что у парсеров. `ops-like` = заголовки с ops/support/community/
+compliance/treasury/custody/analyst/specialist/staking… Проверено с VPS.
+
+| ATS | slug | вакансий | ops-like | Комментарий |
+|---|---|---|---|---|
+| Ashby | **Polymarket** | 55 | 12 | ★ AML/Compliance/Ops — сильнейший |
+| Greenhouse | **blockchain** (Blockchain.com) | 35 | 11 | ★ биржа, много ops |
+| Ashby | **stellar** (Stellar Dev Foundation) | 29 | 2 | Product Operations Lead |
+| Greenhouse | **ondofinance** (Ondo) | 22 | 5 | RWA/DeFi |
+| Greenhouse | **layerzerolabs** (LayerZero) | 19 | 3 | инфра |
+| Ashby | **alchemy** (Alchemy) | 17 | 3 | инфра, Customer/Support |
+| Ashby | **turnkey** (Turnkey) | 13 | 2 | Support Engineer |
+| Greenhouse | **b2c2** (B2C2) | 9 | 1 | OTC, Compliance |
+| Greenhouse | **aptoslabs** (Aptos) | 6 | 2 | Community Manager |
+| Greenhouse | **figment** (Figment) | 2 | 1 | ★ staking-ops — прямо профильно |
+
+**Опционально / низкий сигнал сейчас** (добавить можно, но пока мало ops):
+Uniswap (ashby, 10/0), bitso (gh, 10/3 — LatAm/Spanish, гейт языка отсечёт),
+gate (lever, 19/3 — часть ролей на китайском), swissborg (lever, 3/1),
+phantom/dune/magiceden/OpenSea/matter-labs/offchainlabs (0 ops в снимке).
+
+### 8.3 Поправки к §4 (проверено fetch'ем, не веб-поиском)
+
+- **`chainlink-labs` (Ashby) — НЕВАЛИДЕН** (404). Рекомендация §4.1 от 01.07 была
+  веб-догадкой; живой fetch её опроверг. Не добавлять под этим slug.
+- Крупные (Chainalysis, Circle, Crypto.com, Bybit, KuCoin, dYdX, Galaxy,
+  Wintermute) под публичными Greenhouse/Lever/Ashby slug'ами **не разрешились** —
+  сидят на Workday/кастомных порталах, текущим пайплайном не забираются. Не цель.
+
+### 8.4 Черновик добавлений (в существующие парсеры, нового кода НЕ нужно)
+
+```yaml
+# settings.yaml → parsers.greenhouse.companies (+6)
+  - { slug: "blockchain",     name: "Blockchain.com" }
+  - { slug: "ondofinance",    name: "Ondo Finance" }
+  - { slug: "layerzerolabs",  name: "LayerZero" }
+  - { slug: "aptoslabs",      name: "Aptos" }
+  - { slug: "b2c2",           name: "B2C2" }
+  - { slug: "figment",        name: "Figment" }        # staking-ops
+
+# settings.yaml → parsers.ashby.companies (+4)
+  - { slug: "Polymarket",     name: "Polymarket" }
+  - { slug: "stellar",        name: "Stellar" }
+  - { slug: "alchemy",        name: "Alchemy" }
+  - { slug: "turnkey",        name: "Turnkey" }
+```
+
+Итого +10 компаний в ATS-списки (~180 доп. вакансий/прогон из высокосигнального
+сегмента). Telegram/hh/remoteok — не расширяем (шум). LinkedIn rate-limit на
+датацентр-IP — отдельная проблема, не источниковая.
