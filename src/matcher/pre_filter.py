@@ -1,5 +1,7 @@
+import hashlib
 import json
 import re
+from functools import lru_cache
 from pathlib import Path
 
 import yaml
@@ -100,6 +102,21 @@ def _load_avoid_keywords() -> set[str]:
 CRITERIA = _load_criteria()
 AVOID_KW = _load_avoid_keywords()
 _W = CRITERIA["weights"]
+
+
+@lru_cache(maxsize=1)
+def _prefilter_version() -> str:
+    """Отпечаток критериев + логики фильтра. Меняется — pre-filter-отказы в
+    seen_jobs считаются устаревшими и переоцениваются (зеркало _scoring_version
+    для AI-кэша). Хешируем criteria.yaml (главный рычаг) и собственный исходник
+    (правки логики гейтов деплоятся вместе с кодом)."""
+    try:
+        criteria = _CRITERIA_FILE.read_text(encoding="utf-8")
+    except OSError:
+        criteria = ""
+    source = Path(__file__).read_text(encoding="utf-8")
+    blob = criteria + source
+    return hashlib.md5(blob.encode("utf-8")).hexdigest()[:12]
 
 
 def _matches(term: str, text: str) -> bool:
