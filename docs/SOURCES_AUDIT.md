@@ -328,3 +328,51 @@ phantom/dune/magiceden/OpenSea/matter-labs/offchainlabs (0 ops в снимке).
 Итого +10 компаний в ATS-списки (~180 доп. вакансий/прогон из высокосигнального
 сегмента). Telegram/hh/remoteok — не расширяем (шум). LinkedIn rate-limit на
 датацентр-IP — отдельная проблема, не источниковая.
+
+---
+
+## 9. Партия 3 (2026-07-13) — проба 55 кандидатов fetch'ем с VPS
+
+Повод: FLOW_AUDIT 13.07 — три дня нулей, но это steady state, не баг. Самый
+дешёвый рычаг для потока по §8.1 — снова больше компаний в ATS-списки.
+Пробито 55 slug'ов через `source_probe.py ats …` (боевой IP VPS), затем у
+сильных кандидатов дампнуты полные заголовки для проверки домена и качества роли.
+
+### 9.1 Урок: проба «✅» без сверки заголовков врёт
+
+`source_probe` считает «ops-like» по подстроке — накручивается ложно. Сверка
+заголовков отсеяла 4 кандидата, которых счётчик рекомендовал добавить:
+
+| Кандидат | ops (проба) | Реальность по заголовкам | Вердикт |
+|---|---|---|---|
+| **ramp** (ashby) | 29 | Финтех Ramp (корп. карты, S/4HANA, Oracle, bill pay) — **НЕ крипто**. 129 вакансий провалят domain-гейт = чистый шум | ОТКЛОНЁН |
+| **sardine** (ashby) | 7 | Накрутка на «Compliance **Platform** Engineer», «People Ops», «DevOps»; реальных ops/support нет | ОТКЛОНЁН |
+| **bitso** (gh) | 3 | LatAm/испанский (уже §8.2); из ролей только Director Trust & Safety | ОТКЛОНЁН |
+| **coingecko** (lever) | 3 | Только «Revenue Operations Associate» (sales-ops), остальное — продажи/SRE | ОТКЛОНЁН |
+
+Правило усилено: `source_probe` — фильтр первого прохода; **перед добавлением
+дампить заголовки и глазами проверять (а) крипто-домен, (б) роль под профиль**.
+
+### 9.2 Добавлено — 5 компаний (крипто-домен + профильные роли)
+
+| ATS | slug | Вакансий | Профильные роли | Сигнал |
+|---|---|---|---|---|
+| Greenhouse | `luno` | 4 | ★ AML Operations Analyst, Compliance Auditor, Group Treasury Manager | Высокий |
+| Greenhouse | `nansen` | 4 | ★ Blockchain Compliance Analyst, Customer Support Agent (entry) | Высокий |
+| Ashby | `elliptic` | 39 | 3–4× Customer Success Manager, Head of Regulatory Affairs | Средний |
+| Lever | `merklescience` | 24 | 2–3× Technical/Customer Success Manager | Средний |
+| Ashby | `notabene` | 6 | 2× Customer Success Manager (travel-rule крипто) | Малый/чистый |
+
+Итого +5 компаний (~77 вакансий/прогон). Luno/Nansen — малый объём, но заголовки
+ровно в целевом сегменте, часть на entry-уровне.
+
+### 9.3 Не разрешились по публичным ATS (Workday/кастом/приватные)
+
+Deribit, Copper, Taurus, Fordefi, Cobo, Lido, RocketPool, EigenLayer, EtherFi,
+Kiln, Everstake, ChorusOne, TRM Labs, Sumsub, Amberdata, Arkham, Messari,
+Exodus, Zerion, Zapper, Privy, Dynamic, Magic, Aave, Optimism, StarkWare,
+Mysten Labs, Injective, Tools for Humanity, Transak, Bridge, Bitstamp, HTX,
+MEXC, Backpack, Hyperliquid, OKCoin, CoinList, Bullish, Ripio — текущим
+пайплайном (Greenhouse/Lever/Ashby публичные API) не забираются. Не цель.
+Слабый сигнал: blockdaemon (ashby 5/1 — только Head of Compliance), uniswap
+(ashby 10/0), immutable (lever 3/0), offchainlabs (lever 16/0).

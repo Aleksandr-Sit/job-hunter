@@ -91,6 +91,9 @@ parsers:
       - { slug: "aptoslabs",       name: "Aptos" }
       - { slug: "b2c2",            name: "B2C2" }            # OTC, compliance
       - { slug: "figment",         name: "Figment" }        # staking-ops
+      # Добавлены по данным (SOURCES_AUDIT §9, проба fetch'ем с VPS 13.07)
+      - { slug: "luno",            name: "Luno" }            # AML/compliance/treasury ops
+      - { slug: "nansen",          name: "Nansen" }          # compliance analyst, support (entry)
 
   ashby:
     enabled: true
@@ -109,6 +112,9 @@ parsers:
       - { slug: "stellar",         name: "Stellar" }
       - { slug: "alchemy",         name: "Alchemy" }
       - { slug: "turnkey",         name: "Turnkey" }
+      # Добавлены по данным (SOURCES_AUDIT §9, проба fetch'ем с VPS 13.07)
+      - { slug: "elliptic",        name: "Elliptic" }        # blockchain compliance, CSM
+      - { slug: "notabene",        name: "Notabene" }        # travel-rule, customer success
 
   lever:
     enabled: true
@@ -128,6 +134,8 @@ parsers:
       - { slug: "animocabrands",   name: "Animoca Brands" } # ~6 вакансий
       # Биржа (был ручным; часть ролей на кит. — режется гейтом языка)
       - { slug: "gate",            name: "Gate.io" }        # ~19, ops/KYC
+      # Добавлены по данным (SOURCES_AUDIT §9, проба fetch'ем с VPS 13.07)
+      - { slug: "merklescience",   name: "Merkle Science" } # blockchain intelligence, CSM
 
   linkedin:
     enabled: true
