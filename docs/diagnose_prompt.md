@@ -80,6 +80,16 @@ ssh vps-senko "docker exec job-hunter-job-hunter-1 python /app/tools/diag/backfi
 Правка боевой БД — только после явного «ок».
 
 ## ГРАБЛИ (проверено на практике)
+- **Длинные замеры на VPS — detached в файл на сервере, НЕ в SSH-поток.** Замер
+  через `ssh vps "docker exec …"` с выводом в поток на ПК умирает молча при
+  обрыве связи (проверено: потеряно 3 прогона funnel_check подряд). Запускать
+  `ssh vps "nohup docker … > /opt/job-hunter/data/<замер>.txt 2>&1 & echo \$!"`,
+  затем ждать по `kill -0 <pid>` / `grep -q` маркёра в файле и забрать результат.
+  Файл на диске сервера переживает обрыв; временные файлы в `data/` потом удалять.
+- Для A/B нового criteria.yaml БЕЗ правки боевого контейнера: `scp` новый файл в
+  `data/`, затем `docker run --rm -v /opt/job-hunter/data/criteria_new.yaml:/app/config/criteria.yaml job-hunter-job-hunter:latest python /app/tools/diag/funnel_check.py`
+  — одноразовый контейнер из задеплоенного образа с подменённым criteria,
+  verify-before-deploy без локальной сборки (локальный python-шим на Windows битый).
 - В read-only скриптах НЕ импортировать `src.scheduler`: его module-level
   `logging.basicConfig` допишет мусор в боевой лог. Парсеры собирать напрямую
   (см. tools/diag/dump_batch.py).
