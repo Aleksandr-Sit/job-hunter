@@ -374,6 +374,7 @@ roles:
     titles_weak:
       - "business process automation"
       - "integration specialist"
+      - "no-code specialist"
       - "ai implementation specialist"
       - "ai solutions specialist"
       - "technical automation"
@@ -381,6 +382,7 @@ roles:
       - "n8n"
       - "zapier"
       - "make.com"
+      - "airtable"
       - "python"
       - "telegram bot"
       - "api integration"
@@ -405,4 +407,80 @@ roles:
       - "director"
       - "lead"
       - "chief"
+    senior_terms: ["senior", "sr."]
+
+  # Четвёртая роль — Web3 QA (manual). Добавлена по CAREER_ADJACENCY_MAP (14.07):
+  # смежность с практикой кандидата (ломал кошельки/tx), низкий порог, remote.
+  # ФОКУС РУЧНОЙ QA: код-гейт pre_filter (selenium/cypress/pytest → «писать код»)
+  # сам отсекает QA-automation/SDET, оставляя manual — это и есть профиль кандидата.
+  qa_web3:
+    threshold: 45
+    english_weight: 1.2     # баг-репорты письменно; A2 на старте хватает
+    must_role:
+      # «quality» одиночным словом НЕ берём — цеплялось за risk/compliance-аналитиков
+      # («ensure quality…»); держим точные QA-фразы (A/B 20.07, CAREER_ADJACENCY_MAP)
+      - "qa"
+      - "quality assurance"
+      - "quality control"
+      - "quality analyst"
+      - "tester"
+      - "testing"
+      - "test engineer"
+    must_domain:
+      - "crypto"
+      - "blockchain"
+      - "web3"
+      - "defi"
+      - "dapp"
+      - "on-chain"
+      - "onchain"
+      - "wallet"
+      - "digital asset"
+      - "exchange"
+      - "token"
+    titles_strong:
+      - "qa engineer"
+      - "qa tester"
+      - "qa analyst"
+      - "qa specialist"
+      - "quality assurance"
+      - "manual qa"
+      - "web3 qa"
+      - "dapp tester"
+      - "test engineer"
+    titles_weak:
+      - "software tester"
+      - "game tester"
+      - "product tester"
+      - "quality analyst"
+      - "test analyst"
+      - "quality control"
+    keywords_boost:
+      - "manual testing"
+      - "test case"
+      - "test cases"
+      - "test plan"
+      - "bug report"
+      - "bug reporting"
+      - "regression"
+      - "exploratory"
+      - "functional testing"
+      - "ui testing"
+      - "jira"
+      - "wallet"
+      - "metamask"
+      - "dapp"
+      - "transaction"
+      - "on-chain"
+    keywords_penalize:
+      - "sdet"
+      - "test automation framework"
+      - "performance testing"
+      - "load testing"
+    keywords_penalize_title:
+      - "head of"
+      - "director"
+      - "lead"
+      - "chief"
+      - "manager"
     senior_terms: ["senior", "sr."]
