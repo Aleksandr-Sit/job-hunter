@@ -54,6 +54,14 @@ english_penalty:
   - "c2"
   - "english c1"
   - "english c2"
+  # RU-формулировки требования сильного английского (барьер кандидата)
+  - "свободный английск"
+  - "разговорный английск"
+  - "английский на уровне"
+  - "уровень носителя"
+  - "носителя английск"
+  - "английский c1"
+  - "английский c2"
 
 # CIS / русскоязычная доработка — переиспользуется из существующей части
 # pre_filter.py (та же логика, один источник списка терминов).
@@ -92,6 +100,12 @@ remote_boost:
   - "worldwide"
   - "distributed team"
   - "work from home"
+  # RU (стемы, ловят падежи)
+  - "удалён*"
+  - "удаленн*"
+  - "дистанционн*"
+  - "из дома"
+  - "на дому"
 
 onsite_penalty:
   - "on-site"
@@ -99,6 +113,10 @@ onsite_penalty:
   - "on site"
   - "in office"
   - "in-office"
+  # RU
+  - "в офисе"
+  - "офисный формат"
+  - "работа в офис*"
 
 relocation_ok:
   - "cyprus"
@@ -178,7 +196,7 @@ roles:
     # чисто русскоязычные РФ-крипто-вакансии проваливались. Гейт = роль+домен,
     # поэтому не-крипто РФ-вакансии не пролезут. Морфология: кладём частые формы.
     must_role: ["operations", "ops", "operational",
-                "операции", "операционный", "оператор", "операциями"]
+                "операц*", "оператор*"]   # стемы: все падежи (см. _matches)
     must_domain:
       - "crypto"
       - "blockchain"
@@ -196,19 +214,14 @@ roles:
       - "ledger"
       - "etherscan"
       # RU крипто-домен
-      - "крипто"
-      - "криптовалюта"
-      - "криптовалюты"
-      - "криптовалют"
-      - "криптобиржа"
-      - "криптобирже"
-      - "блокчейн"
+      - "крипто*"
+      - "блокчейн*"
       - "цифровой рубль"
       - "цифрового рубля"
       - "цифровых активов"
       - "цифровые активы"
       - "цфа"
-      - "обменник"
+      - "обменник*"
     titles_strong:
       - "crypto operations"
       - "web3 operations"
@@ -226,6 +239,10 @@ roles:
       - "operations specialist"
       - "operations associate"
       - "customer operations"
+      # RU strong-титулы (стемы)
+      - "крипто-операц*"
+      - "специалист по операц*"
+      - "операционный специалист"
     titles_weak:
       - "operations analyst"
       - "business operations"
@@ -241,7 +258,7 @@ roles:
       - "специалист по операциям"
       - "операционный специалист"
       - "операционный менеджер"
-      - "оператор"
+      - "оператор*"
     keywords_boost:
       - "multichain"
       - "evm"
@@ -267,10 +284,10 @@ roles:
       - "async"
       - "on-chain"
       - "onchain"
-      # RU
-      - "комплаенс"
-      - "сверка"
-      - "расчёты"
+      # RU (стемы)
+      - "комплаенс*"
+      - "сверк*"
+      - "расчёт*"
     keywords_penalize:
       - "sales"
       - "account executive"
@@ -301,13 +318,9 @@ roles:
       - "trust & safety"
       - "user support"
       - "community"
-      # RU-формы (21.07, RU_CRYPTO_MARKET_MAP) — гейт связкой с крипто-доменом ниже
-      - "поддержка"
-      - "поддержки"
-      - "поддержке"
-      - "поддержку"
-      - "сообщества"
-      - "сообществом"
+      # RU-формы (стемы, ловят падежи) — гейт связкой с крипто-доменом ниже
+      - "поддержк*"
+      - "сообществ*"
       - "комьюнити"
     must_domain:
       - "crypto"
@@ -326,18 +339,13 @@ roles:
       - "ledger"
       - "metamask"
       # RU крипто-домен
-      - "крипто"
-      - "криптовалюта"
-      - "криптовалюты"
-      - "криптовалют"
-      - "криптобиржа"
-      - "криптобирже"
-      - "блокчейн"
+      - "крипто*"
+      - "блокчейн*"
       - "цифровой рубль"
       - "цифрового рубля"
       - "цифровых активов"
       - "цфа"
-      - "обменник"
+      - "обменник*"
     titles_strong:
       - "web3 support"
       - "crypto support"
@@ -372,18 +380,18 @@ roles:
       - "compliance support"
       - "onboarding specialist"
       - "kyc"
-      # RU
-      - "менеджер сообщества"
-      - "поддержки"
+      # RU (стемы)
+      - "менеджер сообществ*"
+      - "поддержк*"
     keywords_boost:
       - "zendesk"
       - "intercom"
       - "freshdesk"
       - "discord"
       - "telegram"
-      - "поддержка"
-      - "тикет"
-      - "обращения пользователей"
+      - "поддержк*"
+      - "тикет*"
+      - "обращени*"
       - "troubleshooting"
       - "crm"
       - "sla"
@@ -421,7 +429,11 @@ roles:
   ai_automation:
     threshold: 45
     english_weight: 1.2
-    must_role: ["automation", "ai agent", "ai workflow", "no-code", "low-code", "rpa"]
+    must_role: ["automation", "ai agent", "ai workflow", "no-code", "low-code", "rpa",
+                # RU: только процессы/бизнес — НЕ «автоматизация тестирования» (это SDET,
+                # не no-code профиль кандидата). Бэрдж «автоматизаци*» ловил SDET-флуд.
+                "автоматизация процесс*", "автоматизации процесс*",
+                "автоматизация бизнес*", "автоматизации бизнес*"]
     must_domain: []
     titles_strong:
       - "ai automation specialist"
@@ -435,6 +447,10 @@ roles:
       - "process automation specialist"
       - "ai operations specialist"
       - "automation consultant"
+      # RU-титулы
+      - "специалист по автоматизации"
+      - "инженер по автоматизации"
+      - "автоматизация процессов"
     titles_weak:
       - "business process automation"
       - "integration specialist"
@@ -442,6 +458,7 @@ roles:
       - "ai implementation specialist"
       - "ai solutions specialist"
       - "technical automation"
+      - "специалист по интеграциям"
     keywords_boost:
       - "n8n"
       - "zapier"
@@ -458,6 +475,9 @@ roles:
       - "workflow"
       - "webhook"
       - "docker"
+      # RU (стемы)
+      - "интеграци*"
+      - "вебхук*"
     keywords_penalize:
       - "machine learning engineer"
       - "ml engineer"
@@ -466,6 +486,11 @@ roles:
       - "phd"
       - "computer vision"
       - "deep learning"
+      # SDET (автоматизация ТЕСТОВ — не no-code профиль кандидата)
+      - "автоматизация тестирования"
+      - "автоматизации тестирования"
+      - "qa automation"
+      - "sdet"
     keywords_penalize_title:
       - "head of"
       - "director"
@@ -490,6 +515,9 @@ roles:
       - "tester"
       - "testing"
       - "test engineer"
+      # RU (стемы) — иначе «Инженер по тестированию» проваливает гейт
+      - "тестирован*"
+      - "тестировщик*"
     must_domain:
       - "crypto"
       - "blockchain"
@@ -503,18 +531,13 @@ roles:
       - "exchange"
       - "token"
       # RU крипто-домен (21.07) — иначе «QA-инженер ЦФА» и т.п. с Habr/HH не проходят
-      - "крипто"
-      - "криптовалюта"
-      - "криптовалюты"
-      - "криптовалют"
-      - "криптобиржа"
-      - "криптобирже"
-      - "блокчейн"
+      - "крипто*"
+      - "блокчейн*"
       - "цифровой рубль"
       - "цифрового рубля"
       - "цифровых активов"
       - "цфа"
-      - "обменник"
+      - "обменник*"
     titles_strong:
       - "qa engineer"
       - "qa tester"
@@ -525,10 +548,10 @@ roles:
       - "web3 qa"
       - "dapp tester"
       - "test engineer"
-      # RU-титулы (21.07) — иначе РФ-QA набирает только gate_base
+      # RU-титулы (стемы) — иначе РФ-QA набирает только gate_base
       - "qa-инженер"
       - "инженер по тестированию"
-      - "тестировщик"
+      - "тестировщик*"
       - "ручное тестирование"
       - "ручной тестировщик"
     titles_weak:
@@ -556,12 +579,11 @@ roles:
       - "dapp"
       - "transaction"
       - "on-chain"
-      # RU
-      - "тестирование"
+      # RU (стемы)
+      - "тестирован*"
       - "тест-кейс"
       - "баг-репорт"
-      - "регресс"
-      - "функциональное тестирование"
+      - "регресс*"
     keywords_penalize:
       - "sdet"
       - "test automation framework"
