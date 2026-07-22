@@ -26,12 +26,17 @@ _EXCLUDED_TITLE_WORDS = {
 }
 
 # Dev-роли — слова в ЗАГОЛОВКЕ, которые указывают на разработчика,
-# НО допустимы если рядом стоит qa/test/operations/support/community
-_DEV_TITLE_WORDS = {"developer", "programmer", "engineer", "devops", "architect"}
+# НО допустимы если рядом стоит qa/test/operations/support/community.
+# RU: «инженер» НЕ включаем — перегружен («инженер поддержки» должен проходить);
+# берём только однозначно-девелоперские существительные.
+_DEV_TITLE_WORDS = {"developer", "programmer", "engineer", "devops", "architect",
+                    "разработчик", "программист"}
 _OPS_QA_TITLE_WORDS = {
     "qa", "test", "testing", "tester", "operations", "ops",
     "support", "community", "relations", "automation",
     "rpa", "no-code", "low-code", "workflow",
+    # RU-аналоги (частые формы) — страхуют, если dev-слово рядом с ops/qa-ролью
+    "тестировщик", "поддержка", "поддержки", "оператор", "сообщества",
 }
 
 # Роли, для которых проектные хард-гейты (код, домен) не применяются —
@@ -120,7 +125,16 @@ def _prefilter_version() -> str:
 
 
 def _matches(term: str, text: str) -> bool:
-    """Слово целиком для простых токенов, подстрока — для фраз со спецсимволами."""
+    """Матч термина в тексте. Три режима:
+    - `стем*` — префиксный матч от границы слова (`\\bстем`): ловит все падежные
+      формы («операц*» → операции/операциям/операционный), но не середину слова
+      («кооперация» не сматчит «операц*»). Нужен для русской морфологии.
+    - одиночный токен без спецсимволов — слово целиком (`\\bслово\\b`).
+    - фраза/со спецсимволами — подстрока.
+    """
+    if term.endswith("*"):
+        stem = term[:-1]
+        return re.search(r"\b" + re.escape(stem), text) is not None
     if re.fullmatch(r"[a-zа-я0-9.\- ]+", term) and " " not in term and "." not in term:
         return re.search(r"\b" + re.escape(term) + r"\b", text) is not None
     return term in text
