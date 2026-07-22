@@ -165,6 +165,10 @@ parsers:
       - "no-code developer"
       - "n8n developer"
 
+  habr:
+    enabled: true        # Habr Career — серверный HTML .vacancy-card, РФ-крипто/финтех
+                         # (МТС Финтех, Bitbanker и др.); запросы задаются в парсере
+
   telegram:
     enabled: true        # читает t.me/s/<channel> публично, без API-ключей
 
