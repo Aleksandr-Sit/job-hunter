@@ -237,6 +237,11 @@ roles:
       - "compliance operations"
       - "kyc operations"
       - "operations manager"
+      # RU-титулы (21.07)
+      - "специалист по операциям"
+      - "операционный специалист"
+      - "операционный менеджер"
+      - "оператор"
     keywords_boost:
       - "multichain"
       - "evm"
@@ -262,6 +267,10 @@ roles:
       - "async"
       - "on-chain"
       - "onchain"
+      # RU
+      - "комплаенс"
+      - "сверка"
+      - "расчёты"
     keywords_penalize:
       - "sales"
       - "account executive"
@@ -344,6 +353,13 @@ roles:
       - "player support"
       - "trust and safety"
       - "trust & safety"
+      # RU-титулы (21.07)
+      - "специалист поддержки"
+      - "специалист службы поддержки"
+      - "поддержка пользователей"
+      - "техническая поддержка"
+      - "оператор поддержки"
+      - "специалист технической поддержки"
     titles_weak:
       - "customer success"
       - "customer experience"
@@ -356,12 +372,18 @@ roles:
       - "compliance support"
       - "onboarding specialist"
       - "kyc"
+      # RU
+      - "менеджер сообщества"
+      - "поддержки"
     keywords_boost:
       - "zendesk"
       - "intercom"
       - "freshdesk"
       - "discord"
       - "telegram"
+      - "поддержка"
+      - "тикет"
+      - "обращения пользователей"
       - "troubleshooting"
       - "crm"
       - "sla"
@@ -480,6 +502,19 @@ roles:
       - "digital asset"
       - "exchange"
       - "token"
+      # RU крипто-домен (21.07) — иначе «QA-инженер ЦФА» и т.п. с Habr/HH не проходят
+      - "крипто"
+      - "криптовалюта"
+      - "криптовалюты"
+      - "криптовалют"
+      - "криптобиржа"
+      - "криптобирже"
+      - "блокчейн"
+      - "цифровой рубль"
+      - "цифрового рубля"
+      - "цифровых активов"
+      - "цфа"
+      - "обменник"
     titles_strong:
       - "qa engineer"
       - "qa tester"
@@ -490,6 +525,12 @@ roles:
       - "web3 qa"
       - "dapp tester"
       - "test engineer"
+      # RU-титулы (21.07) — иначе РФ-QA набирает только gate_base
+      - "qa-инженер"
+      - "инженер по тестированию"
+      - "тестировщик"
+      - "ручное тестирование"
+      - "ручной тестировщик"
     titles_weak:
       - "software tester"
       - "game tester"
@@ -497,6 +538,7 @@ roles:
       - "quality analyst"
       - "test analyst"
       - "quality control"
+      - "специалист по тестированию"
     keywords_boost:
       - "manual testing"
       - "test case"
@@ -514,6 +556,12 @@ roles:
       - "dapp"
       - "transaction"
       - "on-chain"
+      # RU
+      - "тестирование"
+      - "тест-кейс"
+      - "баг-репорт"
+      - "регресс"
+      - "функциональное тестирование"
     keywords_penalize:
       - "sdet"
       - "test automation framework"
