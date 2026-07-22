@@ -14,9 +14,13 @@ telegram_channels:
   - cryptojobsh          # 20 постов
   - web3vacancy          # 20 постов — web3 вакансии EN
   - web3hiring           # 61k подписчиков, daily global web3 вакансии, EN
+  - jobers               # 20 постов — «РАБОТА в КриптоИндустрии» RU (проба 22.07)
   # Не работают (приватные или нет публичного preview):
   # - pythonru, django_jobs, it_jobs_world, crypto_jobs_channel
   # - web3_jobs_channel, ru_holder
+  # Проверены 22.07, отклонены: holder_job_marketing (маркетинг/BD не профиль),
+  #   defijobs (новостной, не вакансии), cryptojobsboard/cryptowork (шум/неактивен),
+  #   cryptojobs_ru/web3jobsru/getitcrypto/cryptorekruter (0 постов, приватные)
 
 company_career_pages:
   # Сайты конкретных компаний (если нужно мониторить careers-страницы)
