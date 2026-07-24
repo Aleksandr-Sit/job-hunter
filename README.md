@@ -8,6 +8,14 @@
 
 Automated job search system for Web3/DeFi operations roles. Parses 10+ sources every hour, filters with AI, sends relevant vacancies to Telegram.
 
+## ✨ Highlights
+
+- **Production 24/7** — 10+ sources → AI scoring against a candidate profile → job cards in Telegram, scheduled on a VPS.
+- **Parser composition** — public ATS APIs (Greenhouse / Lever / Ashby) + HH.ru + Telegram channels, unified behind one interface.
+- **EN/RU keyword engine** — stem-matching pre-filter (role gates + weighted scoring) that ranks Russian and English vacancies equally.
+- **AI matching** — Cerebras/Gemini with a weighted model, human-readable reasons, and a versioned "seen" gate that re-opens jobs on recalibration.
+- **Data-driven tuning** — diagnostic tools (funnel breakdown, live source probe) and A/B on a real batch before every deploy.
+
 ## How it works
 
 ```
