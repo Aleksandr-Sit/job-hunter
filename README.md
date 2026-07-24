@@ -18,17 +18,13 @@ Automated job search system for Web3/DeFi operations roles. Parses 10+ sources e
 
 ## How it works
 
-```
-Sources (1600+ jobs/run)
-    │
-    ▼
-Pre-filter — removes senior/director/dev roles, 6+ years exp, coding requirements
-    │
-    ▼
-AI Matching — Cerebras LLM scores each job 0–100 against your profile
-    │
-    ▼
-Telegram — sends only jobs with score ≥ 65, in Russian, sorted by relevance
+```mermaid
+flowchart TD
+    A["Sources · ~2500 jobs/run<br/>ATS API · HH · Telegram · Habr Career"] --> B["Pre-filter<br/>role gates + weighted scoring · EN/RU stem-matching"]
+    B -->|passes gate| C["AI Matching<br/>Cerebras — score 0–100 vs profile"]
+    B -->|rejected| X["seen-gate · versioned<br/>(re-opens on recalibration)"]
+    C -->|score &ge; 58| D["Telegram<br/>job cards, sorted by relevance"]
+    C -->|score &lt; 58| X
 ```
 
 Full data flow, plus the reasoning behind each architectural choice (why two filter
