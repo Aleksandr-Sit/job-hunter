@@ -27,3 +27,11 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+
+# Личные job-search выводы — не для публичного портфолио (остаются локально)
+docs/resume/
+docs/JOB_PLAN.md
+docs/CAREER_ADJACENCY_MAP.md
+docs/RU_CRYPTO_MARKET_MAP.md
+docs/RESUME_UPKEEP.md
+docs/resume_drafts.md
