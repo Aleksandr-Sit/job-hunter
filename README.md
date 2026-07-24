@@ -1,5 +1,11 @@
 # Job Hunter Bot 🤖
 
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
+![AI](https://img.shields.io/badge/AI-matching-8A2BE2)
+![Telegram](https://img.shields.io/badge/Telegram-bot-26A5E4?logo=telegram&logoColor=white)
+![last commit](https://img.shields.io/github/last-commit/Aleksandr-Sit/job-hunter)
+
 Automated job search system for Web3/DeFi operations roles. Parses 10+ sources every hour, filters with AI, sends relevant vacancies to Telegram.
 
 ## How it works
