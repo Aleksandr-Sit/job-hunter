@@ -60,14 +60,42 @@ _CODE_REQUIRED_PATTERN = re.compile(
 )
 
 # ── 3. Опыт 7+ лет ────────────────────────────────────────────────────────────
-_HIGH_EXP_PATTERN = re.compile(
-    r'(?:'
-    r'\b(?:7|8|9|1\d|20)\+?\s*(?:years?|лет|года?|г\.)'
-    r'|(?:more\s+than|более|свыше|over)\s+6\s*(?:years?|лет)'
-    r'|(?:from|от|min(?:imum)?\.?\s*)\s*[7-9]\d*\s*(?:years?|лет)'
-    r')',
+# Голое «N years» — НЕ требование опыта: описания компаний часто содержат
+# «has spent the last 15 years building…» (возраст компании), из-за чего гейт
+# молча резал релевантные ops-роли (HEALTH_AUDIT F10, замер 25.07). Поэтому
+# «N лет» считаем требованием ТОЛЬКО (а) при явной нижней границе
+# («from/over/at least/от/не менее 7 лет») или (б) рядом с контекстом опыта
+# и НЕ рядом с историей компании.
+_YEARS_NUM_PATTERN = re.compile(
+    r'\b(?:[7-9]|1\d|20)\+?\s*(?:years?|лет|года?|г\.)',
     re.IGNORECASE,
 )
+_EXPLICIT_HIGH_EXP = re.compile(
+    r'\b(?:more\s+than|более\s+чем|свыше|at\s+least|не\s+менее|from|от|min(?:imum)?\.?)\s*'
+    r'(?:[7-9]|1\d|20)\+?\s*(?:years?|лет)',
+    re.IGNORECASE,
+)
+_EXP_REQ_CONTEXT = re.compile(
+    r'(experience|exp\.|опыт|стаж|require|minimum|min\.|at\s+least|'
+    r'не\s+менее|professional|track\s+record|proven|in\s+a\s+similar)',
+    re.IGNORECASE,
+)
+_EXP_HISTORY_CONTEXT = re.compile(
+    r'(spent|build|built|founded|history|for\s+the\s+(?:last|past)|'
+    r'over\s+the\s+(?:last|past)|за\s+последн|основан|we\s+have\s+been|our\s+journey)',
+    re.IGNORECASE,
+)
+
+
+def _high_exp_required(blob: str) -> bool:
+    """True, если требуется 7+ лет опыта (а не просто упомянуто «N лет»)."""
+    if _EXPLICIT_HIGH_EXP.search(blob):
+        return True
+    for m in _YEARS_NUM_PATTERN.finditer(blob):
+        window = blob[max(0, m.start() - 40): m.end() + 40]
+        if _EXP_REQ_CONTEXT.search(window) and not _EXP_HISTORY_CONTEXT.search(window):
+            return True
+    return False
 
 # ── 4. Иностранные языки (кроме ru/en) ────────────────────────────────────────
 _FOREIGN_LANG_PATTERN = re.compile(
@@ -171,7 +199,7 @@ def _extra_hard_gates(title: str, text: str, role_key: str) -> str | None:
     if not exempt and _CODE_REQUIRED_PATTERN.search(blob):
         return "требуется писать код"
 
-    if _HIGH_EXP_PATTERN.search(blob):
+    if _high_exp_required(blob):
         return "требуется 7+ лет опыта"
 
     if _foreign_lang_required(blob):
@@ -282,7 +310,8 @@ def score_vacancy(title: str, text: str, role_key: str) -> dict:
 
 
 def score_job(job: Job) -> dict:
-    """Скорит вакансию по обеим ролям (crypto_ops, web3_support), возвращает лучшую."""
+    """Скорит вакансию по всем ролям из criteria.yaml (crypto_ops, web3_support,
+    ai_automation, qa_web3), возвращает лучшую по баллу."""
     results = [score_vacancy(job.title, job.description, r) for r in CRITERIA["roles"]]
     best = max(results, key=lambda r: r["score"])
     return {"best": best, "all": results}

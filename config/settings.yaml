@@ -149,7 +149,10 @@ parsers:
       - { slug: "merklescience",   name: "Merkle Science" } # blockchain intelligence, CSM
 
   linkedin:
-    enabled: true
+    enabled: false       # LinkedIn стабильно отдаёт HTTP 429 (rate limit) на
+                         # публичный скрейп → 0 вакансий. Отключён, чтобы не
+                         # занимать слот парсинга. Вернуть в true, если появится
+                         # рабочий доступ (прокси/API).
     hours_old: 72        # вакансии не старше 3 дней
     results_per_query: 30
     queries:

@@ -32,14 +32,18 @@ stages, why SQLite, why polling not a webhook, etc.) — see [docs/ARCHITECTURE.
 
 ## Sources
 
-| Source | Type | Jobs/run |
-|--------|------|----------|
-| OKX, Coinbase, Ripple, Gemini, Fireblocks, Consensys, BitGo, Bitpanda | Greenhouse API | ~700 |
-| Binance, Kraken, Anchorage Digital, MoonPay, Safe, Gauntlet, 1inch, Animoca Brands, Celestia | Lever API | ~460 |
-| HH.ru | REST API (12 queries) | ~120 |
-| RemoteOK | JSON API | ~100 |
-| CryptoJobsList, LaborX, Remote3 | Web scraping | ~100 |
-| 11 Telegram channels | t.me/s/ scraping | ~210 |
+| Source | Type | Scope | Jobs/run |
+|--------|------|-------|----------|
+| Greenhouse API | ATS | 18 companies (OKX, Coinbase, Ripple, Gemini, Fireblocks, Bitpanda, BitGo, Luno, Nansen, …) | ~1050 |
+| Lever API | ATS | 10 companies (Binance, Anchorage, MoonPay, Safe, Gate.io, Merkle Science, …) | ~430 |
+| Ashby API | ATS | 11 companies (Kraken, Ledger, Trust Wallet, Polymarket, Elliptic, Notabene, …) | ~260 |
+| HH.ru | REST API | RU/EN queries (crypto ops/support/QA, AML/ЦФА) | ~360 |
+| RemoteOK | JSON API | all remote | ~100 |
+| CryptoJobsList, LaborX, Remote3 | Web scraping | crypto boards | ~85 |
+| Habr Career | Web scraping | RU crypto/fintech | varies |
+| Telegram | t.me/s/ scraping | 13 channels | ~20 / channel |
+
+> LinkedIn parser exists but is disabled — the public endpoint returns HTTP 429 (rate limit) and yields ~0. web3career is disabled (HTTP 403).
 
 ## AI Matching
 

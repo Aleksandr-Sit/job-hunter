@@ -1,7 +1,7 @@
 """
 Batch matcher на базе Cerebras (бесплатно без карты, OpenAI-совместимый).
-Модель: llama-3.3-70b — та же Llama 3.3 70B, 30 req/min бесплатно.
-Ключ: inference.cerebras.ai → Sign up → Get API key.
+Модель берётся из .env (CEREBRAS_MODEL); прод использует gpt-oss-120b.
+Ключ: cloud.cerebras.ai → API Keys → Create key.
 """
 import json
 import logging
@@ -33,27 +33,32 @@ _CEREBRAS_RETRY_SLEEP = 20  # секунды между попытками
 
 _SYSTEM_INSTRUCTION = """\
 You are a job matching assistant for a specific candidate (full profile below).
-Candidate: ~5 years of hands-on crypto/web3 on-chain experience (operations,
+Candidate: ~6 years of hands-on crypto/web3 on-chain experience (operations,
 wallets, exchanges, multichain), background in support/sales. English level
 A1–A2 (basic). Wants remote work or relocation (Cyprus/Greece/Thailand/Turkey/
 Armenia/UAE/Serbia).
 
 Since June 2026 the candidate has been building hands-on AI-automation skills
-with Claude Code (~1 month at time of writing) and has two working portfolio
-projects to show as proof of skill, not just claimed knowledge: a job-search
-automation pipeline (Python, AI-matching, Docker, multi-source parsing) and a
-multi-bot crypto trading system (Python, multi-exchange, Docker, VPS,
-watchdog/risk-management architecture, currently in paper-trading mode). When
-matching AI-automation roles, weigh these concrete projects as real evidence
-of ability even though the candidate has no paid AI-automation work history —
-but he IS a genuine beginner, so do not expect him to fit roles demanding
-years of professional ML/software-engineering experience.
+with Claude Code and now has FOUR working open-source portfolio projects as
+proof of skill, not just claimed knowledge: (1) a job-search automation pipeline
+(Python, AI-matching, Docker, multi-source parsing); (2) a multi-bot crypto
+trading system (Python, multi-exchange, Docker, VPS, watchdog/risk-management,
+paper-trading mode); (3) an on-chain analytics pipeline for Solana wallet
+discovery (Dune data via DuckDB); (4) a crypto accumulation-zone scanner
+(multi-stage funnel, anti-rug/honeypot filters, backtests). When matching
+AI-automation roles, weigh these concrete projects as real evidence of ability
+even though the candidate has no paid AI-automation work history — but he IS a
+genuine beginner, so do not expect him to fit roles demanding years of
+professional ML/software-engineering experience.
 
-Three priority roles — score against whichever fits best:
+Four priority roles — score against whichever fits best:
 1. Crypto/Web3/DeFi Operations (primary, strongest fit — direct hands-on experience)
 2. Web3/Crypto Support (secondary — English is the bottleneck here)
 3. AI Automation / no-code / workflow automation (any industry, not limited to
-   crypto/web3) — entry-level fit, backed by the two portfolio projects above
+   crypto/web3) — entry-level fit, backed by the four portfolio projects above
+4. Web3 QA / manual testing (manual QA, NOT SDET/automation) — adjacent to the
+   candidate's hands-on habit of breaking wallets/dApps/transactions; entry-level,
+   written bug reports (English A2 is enough)
 
 Evaluate each job listing against the candidate profile and score the fit from 0 to 100.
 
@@ -182,7 +187,7 @@ def match_batch(jobs: list[Job], client: Optional[OpenAI] = None) -> Optional[li
     if client is None:
         client = _get_client()
 
-    model_name = os.environ.get("CEREBRAS_MODEL", "llama-3.3-70b")
+    model_name = os.environ.get("CEREBRAS_MODEL", "gpt-oss-120b")
     profile_text = _build_profile_text()
     jobs_text = "\n\n---\n\n".join(f"JOB ID: {j.id}\n{j.to_text()}" for j in jobs)
 

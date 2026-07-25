@@ -37,6 +37,21 @@ _JOB_KEYWORDS = [
     "specialist", "менеджер", "manager", "analyst", "аналитик",
 ]
 
+# Посты-резюме / «ищу работу» проходят по _JOB_KEYWORDS (там есть crypto/web3),
+# но это НЕ вакансии — их не нужно слать кандидату и тратить на них AI (F1).
+# Отсекаем, только если пост НАЧИНАЕТСЯ как резюме и в начале нет признака вакансии.
+_RESUME_MARKERS = (
+    "резюме", "ищу работу", "ищу проект", "ищу вакансию", "в поиске работы",
+    "готов взяться", "open to work", "looking for work", "#резюме", "#ищуработу",
+    "#cv", "cv:", "ищу удаленную работу",
+)
+_VACANCY_MARKERS = ("ваканси", "hiring", "ищем", "требу", "we are looking", "we're looking")
+
+# Ведущие эмодзи/хэштеги/пунктуация/маркеры — не должны становиться заголовком.
+# \W ловит эмодзи (включая variation selectors), #, @, •, тире, пробелы; буквы
+# (лат./кир.) и цифры сохраняются.
+_TITLE_STRIP = re.compile(r'^[\W_]+', re.UNICODE)
+
 
 def _extract_salary(text: str) -> tuple[Optional[int], Optional[int], str]:
     currency = "RUB" if ("руб" in text.lower() or "₽" in text) else "USD"
@@ -61,6 +76,35 @@ def _extract_salary(text: str) -> tuple[Optional[int], Optional[int], str]:
     if len(values) == 1:
         return values[0], None, currency
     return None, None, currency
+
+
+def _clean_title(line: str) -> str:
+    """Убирает ведущие эмодзи/хэштеги/маркеры из строки-заголовка."""
+    return _TITLE_STRIP.sub("", line).strip()
+
+
+# Одинокое слово-заголовок («Вакансия», «Hiring») — не роль; берём следующую строку.
+_GENERIC_HEADER = {
+    "вакансия", "вакансии", "vacancy", "hiring", "job", "jobs", "job opening",
+    "открыта вакансия", "новая вакансия", "we are hiring", "we're hiring",
+}
+
+
+def _pick_title(lines: list[str]) -> str:
+    """Первая содержательная строка (≥8 букв, не общий заголовок), а не эмодзи/хэштег."""
+    for line in lines:
+        cleaned = _clean_title(line)
+        if sum(ch.isalpha() for ch in cleaned) >= 8 and cleaned.lower() not in _GENERIC_HEADER:
+            return cleaned[:120]
+    return (_clean_title(lines[0])[:120] if lines else "Job opening")
+
+
+def _is_resume_post(text_lower: str) -> bool:
+    """True, если пост — резюме/«ищу работу», а не вакансия (по началу поста)."""
+    head = text_lower[:80]
+    return any(m in head for m in _RESUME_MARKERS) and not any(
+        v in head for v in _VACANCY_MARKERS
+    )
 
 
 def _parse_datetime(dt_str: str) -> Optional[datetime]:
@@ -99,6 +143,9 @@ def _fetch_channel(channel: str, timeout: int = 20) -> list[Job]:
         text_lower = text.lower()
         if not any(kw in text_lower for kw in _JOB_KEYWORDS):
             continue
+        # Пропускаем посты-резюме / «ищу работу» — это не вакансии (F1)
+        if _is_resume_post(text_lower):
+            continue
 
         # Дата публикации
         time_el = msg.find("time", class_="time")
@@ -115,9 +162,9 @@ def _fetch_channel(channel: str, timeout: int = 20) -> list[Job]:
         post_id = post_url.rstrip("/").split("/")[-1]
         uid = hashlib.md5(f"{channel}_{post_id}".encode()).hexdigest()[:12]
 
-        # Заголовок — первая непустая строка
+        # Заголовок — первая содержательная строка (не эмодзи/хэштег) (F1)
         lines = [l.strip() for l in text.split("\n") if l.strip()]
-        title = lines[0][:120] if lines else "Job opening"
+        title = _pick_title(lines)
 
         sal_min, sal_max, currency = _extract_salary(text)
         is_remote = any(

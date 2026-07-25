@@ -31,6 +31,7 @@ def build_parsers():
     from src.parsers.web.greenhouse import GreenhouseParser
     from src.parsers.web.lever import LeverParser
     from src.parsers.web.linkedin import LinkedInParser
+    from src.parsers.web.habr import HabrCareerParser
 
     cfg = yaml.safe_load((_ROOT / "config" / "settings.yaml").read_text(encoding="utf-8"))
     p = cfg.get("parsers", {})
@@ -46,6 +47,7 @@ def build_parsers():
     if p.get("greenhouse", {}).get("enabled", True): out.append(GreenhouseParser())
     if p.get("lever", {}).get("enabled", True): out.append(LeverParser())
     if p.get("linkedin", {}).get("enabled", False): out.append(LinkedInParser())
+    if p.get("habr", {}).get("enabled", True): out.append(HabrCareerParser())
     if p.get("telegram", {}).get("enabled", True): out.append(TelegramParser())
     return out
 
