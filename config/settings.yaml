@@ -1,8 +1,10 @@
 # Основные настройки Job Hunter
 
 matching:
-  threshold: 58          # минимальный score для отправки в Telegram (было 65:
-                         # открыт диапазон 55-64 частичных матчей, DIAGNOSE 08.07)
+  threshold: 55          # минимальный score для отправки в Telegram.
+                         # 65→58 (DIAGNOSE 08.07); 58→55 (HEALTH_AUDIT Lever B,
+                         # 25.07): зона 55-57 = +113 релевантных за историю
+                         # (Treasury/DeFi ops, CEX/DEX, support), AI их уже одобрил.
   batch_size: 5          # вакансий за один запрос к Cerebras (500 chars × 5 ≈ 3k токенов/батч)
 
 scheduler:
