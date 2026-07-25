@@ -158,6 +158,11 @@ web3career (403, disabled) — код оставлен; wellfound/contra disable
 `post_url → t.me/{channel}`, `post_id → channel`, и все такие посты получают
 **один** id → над-дедуп (теряются). Редко, но возможно.
 
+### F12 · funnel_check рвёт JSONL на Unicode-разделителе · `[ФАКТ]`
+**Где:** `tools/diag/funnel_check.py:26` — `.splitlines()` бьёт запись на U+2028/
+U+2029/NEL внутри описания вакансии → `JSONDecodeError` в файловом (A/B) режиме.
+Найдено при этом же аудите. **Фикс:** `.split("\n")`. Риск: нулевой (диагностика).
+
 ### F11 · Диагностика (dump_batch) рассинхронена со scheduler — нет Habr · `[ФАКТ]`
 **Где:** `tools/diag/dump_batch.py:21-50` — список парсеров не содержит
 `HabrCareerParser`, хотя `scheduler._build_parsers` (`scheduler.py:60,89`) его включает.

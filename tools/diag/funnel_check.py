@@ -23,7 +23,9 @@ from src.matcher.pre_filter import score_vacancy, CRITERIA  # noqa: E402
 def load_jobs() -> list[dict]:
     if len(sys.argv) > 1:
         path = Path(sys.argv[1])
-        return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+        # split("\n"), а не splitlines(): последний рвёт JSONL-запись, если в
+        # описании есть Unicode-разделитель (U+2028/U+2029/NEL) — HEALTH_AUDIT.
+        return [json.loads(line) for line in path.read_text(encoding="utf-8").split("\n") if line.strip()]
     from dump_batch import fetch_jobs
     return fetch_jobs()
 
