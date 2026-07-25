@@ -376,3 +376,37 @@ MEXC, Backpack, Hyperliquid, OKCoin, CoinList, Bullish, Ripio — текущим
 пайплайном (Greenhouse/Lever/Ashby публичные API) не забираются. Не цель.
 Слабый сигнал: blockdaemon (ashby 5/1 — только Head of Compliance), uniswap
 (ashby 10/0), immutable (lever 3/0), offchainlabs (lever 16/0).
+
+---
+
+## 10. Партия 4 (2026-07-25, HEALTH_AUDIT) — 0 чистых добавлений
+
+Повод: рычаг «больше источников» после тюнинга порогов (Lever A/B). Пробито ~78
+свежих ATS-slug'ов + 5 бордов + getmatch API с боевого IP VPS. **Итог: ни одного
+чистого добавления** — публичный ATS-универс крипты уже покрыт (39 компаний),
+остальное не забирается или не под профиль (remote-RU, не-dev).
+
+**ATS — единственные с сигналом, но отклонены (заголовки проверены fetch'ем):**
+| slug | ATS | вакансий / ops | почему НЕ добавлен |
+|---|---|---|---|
+| certik | lever | 31 / 7 | крипто-домен ✅, но 28 из 31 — Blockchain Security Engineer (dev, режется гейтом); профильных ~2-3 (Compliance Engineer, IT Ops), в осн. US |
+| falconx | greenhouse | 10 / 5 | крипто ✅, но профильных 2 (Compliance Onboarding, Custody Ops) — **обе onsite US/Malta**, не под remote-RU |
+| paxos | ashby | 9 / 4 | нестабилен (то 200, то 403 — Ashby anti-bot); в осн. HR/People |
+| keyrock/bitmex/openzeppelin/nethermind/taxbit/immutable/blockdaemon/mystenlabs/jito/helius/bitvavo | разн. | 0-1 ops | мало/нет профильных ролей |
+
+**Не разрешились по публичным ATS** (Workday/кастом): bitstamp, deribit, copper,
+bitwise, trmlabs, sumsub, avalabs, sei, berachain, monad, amberdata, kaiko,
+coinmetrics, talos, mercuryo, transak, nexo, whitebit, storyprotocol, worldcoin,
+chorusone, kiln, stakefish, everstake, lido, hacken, quantstamp, reown,
+walletconnect, privy, gnosis, rarible, zora, certora, status, htx, okcoin, gsr,
+bitrue, bit2me, tether, bitfinex, wormhole, thirdweb, dfinity — не цель.
+
+**Борды (board-проба):** cryptocurrencyjobs.co (Algolia-SPA), getmatch.ru (SPA,
+API `/api/vacancies` → **401 auth**), cryptojobs.com (SPA), web3.career (403) —
+все брайттл/закрыты, чистого фида нет. getmatch — самый релевантный для remote-RU,
+но API под токеном.
+
+**Вывод:** покрытие источников исчерпано для текущего пайплайна. Связывающее
+ограничение потока — разреженность рынка под узкий remote-RU/A2-профиль, а НЕ
+нехватка источников. Реальный рычаг — уже задеплоенные пороги (Lever A/B), либо
+новый парсер под закрытый API (getmatch) — но это код + риск ToS, не «ещё slug».
