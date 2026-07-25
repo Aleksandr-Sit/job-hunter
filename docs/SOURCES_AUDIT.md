@@ -401,10 +401,17 @@ chorusone, kiln, stakefish, everstake, lido, hacken, quantstamp, reown,
 walletconnect, privy, gnosis, rarible, zora, certora, status, htx, okcoin, gsr,
 bitrue, bit2me, tether, bitfinex, wormhole, thirdweb, dfinity — не цель.
 
-**Борды (board-проба):** cryptocurrencyjobs.co (Algolia-SPA), getmatch.ru (SPA,
-API `/api/vacancies` → **401 auth**), cryptojobs.com (SPA), web3.career (403) —
-все брайттл/закрыты, чистого фида нет. getmatch — самый релевантный для remote-RU,
-но API под токеном.
+**Борды (board-проба):** cryptocurrencyjobs.co (Algolia-SPA), cryptojobs.com (SPA),
+web3.career (403) — брайттл/закрыты, чистого фида нет.
+
+**getmatch.ru — замерено по каталогу (не оценка):** `/api/vacancies` под 401, НО
+`/api/offers` **публичен** (200, robots разрешает). Выкачано 731 вакансий →
+**0 крипто-домена** (крипто/blockchain/web3/defi/цфа в заголовке+навыках+описании),
+0 профильных. Это общий РФ IT-board для разработчиков/аналитиков (топ-слова:
+engineer, аналитик, developer, devops), НЕ крипто-площадка. Прирост под профиль
+кандидата ≈ 0. Плюс API нестабилен (750 vs 25 записей между прогонами) → парсер
+был бы хрупким. **Не строить.** (Прежняя оценка «самый релевантный remote-RU» —
+опровергнута замером.)
 
 **Вывод:** покрытие источников исчерпано для текущего пайплайна. Связывающее
 ограничение потока — разреженность рынка под узкий remote-RU/A2-профиль, а НЕ
