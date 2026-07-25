@@ -56,6 +56,39 @@ job-hunter: работает ли всё как задумано **прямо с
    = чистота кода/портфолио-готовность. Этот аудит = **работоспособность + потери +
    актуальность/расхождения**. Пересечения — ссылайся, не дублируй.
 
+## РЕЦЕПТЫ И ГРАБЛИ (из боевых прогонов — не переизобретать)
+
+**A/B «эффект правки, изолированно» (dump один раз → funnel дважды):**
+Сначала заморозь ОДИН батч, потом гоняй funnel на нём со старым и новым кодом —
+так дельта чистая (одни и те же вакансии).
+```bash
+IMG=$(ssh vps-senko 'docker inspect --format "{{.Config.Image}}" job-hunter-job-hunter-1')  # = job-hunter-job-hunter
+# 1) заморозить батч (ephemeral, прод не трогаем); можно примонтировать новые парсеры
+docker run --rm -d -v /opt/job-hunter/data:/app/data \
+  -v /opt/job-hunter/data/dump_batch_new.py:/app/tools/diag/dump_batch.py \
+  -v /opt/job-hunter/data/telegram_new.py:/app/src/parsers/telegram_parser.py \
+  "$IMG" sh -c "python /app/tools/diag/dump_batch.py > /app/data/diag_batch.jsonl 2>/app/data/diag_batch.err"
+# 2) BASELINE — образ как есть; NEW — примонтировать новый pre_filter поверх
+docker run --rm -v /opt/job-hunter/data:/app/data "$IMG" \
+  python /app/tools/diag/funnel_check.py /app/data/diag_batch.jsonl 2>&1 | grep -E "^total=|<интересующий гейт>"
+docker run --rm -v /opt/job-hunter/data:/app/data \
+  -v /opt/job-hunter/data/pre_filter_new.py:/app/src/matcher/pre_filter.py "$IMG" \
+  python /app/tools/diag/funnel_check.py /app/data/diag_batch.jsonl 2>&1 | grep -E "^total=|<гейт>"
+```
+Смотри дельту `gate_passed` и `recommend`: рост recommend без взрыва = фикс без флуда.
+
+**Грабли (проверено 25.07):**
+- `funnel_check.load_jobs` исторически падал на `JSONDecodeError`: описания вакансий
+  содержат Unicode-разделители (U+2028/U+2029/NEL). Санируй батч перед A/B
+  (`.replace(" "," ")…`) ИЛИ убедись, что читаешь `.split("\n")`, не `.splitlines()`.
+- `dump_batch.build_parsers` и `scheduler._build_parsers` — ДВА захардкоженных списка
+  парсеров; дрейфят (Habr был только в scheduler → все замеры недосчитывали Habr).
+  Всегда сверяй оба списка, прежде чем верить «источник отдаёт 0».
+- **Модель AI смотри через `docker exec … printenv CEREBRAS_MODEL`, а не по README** —
+  README/код-дефолт отставали от реального прод-env.
+- Долгий fetch (~2 мин) запускай detached (`docker exec -d` / `docker run --rm -d`),
+  жди файл, не держи в SSH-потоке.
+
 ## ФАЗЫ
 
 ### Фаза 0 — Инвентарь «заявлено vs реально подключено»
