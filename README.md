@@ -47,9 +47,9 @@ Each job is scored against the candidate profile (resume + skills + preferences)
 
 Scoring:
 - **90–100** — perfect match
-- **75–89** — strong match, 1–2 minor gaps  
-- **65–74** — decent match, worth applying
-- **< 65** — filtered out
+- **75–89** — strong match, 1–2 minor gaps
+- **58–74** — decent match, worth applying
+- **< 58** — not sent (below the notification threshold)
 
 Checkpoint saved after every batch → safe to restart mid-run without re-processing.
 
