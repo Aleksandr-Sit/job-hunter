@@ -1,10 +1,10 @@
-import sqlite3
 import json
+import sqlite3
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from datetime import datetime, timezone
 from typing import Optional
-from .models import MatchResult
 
+from .models import MatchResult
 
 DB_PATH = Path(__file__).parent.parent / "data" / "jobs.db"
 
@@ -36,6 +36,19 @@ def init_db() -> None:
                 watch_out TEXT NOT NULL,
                 recommendation TEXT NOT NULL,
                 matched_at TEXT NOT NULL
+            );
+
+            -- Трекер откликов: пайплайн заканчивался на «прислал карточку», из-за
+            -- чего вторая половина поиска работы (на что откликнулся, кто молчит)
+            -- жила вне системы. Заполняется кнопкой «✅ Откликнулся» в карточке.
+            CREATE TABLE IF NOT EXISTS applications (
+                job_id TEXT PRIMARY KEY,
+                title TEXT,
+                company TEXT,
+                url TEXT,
+                score INTEGER,
+                applied_at TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'applied'
             );
         """)
         # Миграция: версия скоринга (промпт+профиль+критерии). Кэш с другой
@@ -144,3 +157,51 @@ def save_match(result: MatchResult, version: Optional[str] = None) -> None:
                 version,
             ),
         )
+
+
+# ── Трекер откликов ───────────────────────────────────────────────────────────
+
+def save_application(job_id: str, title: str = "", company: str = "",
+                     url: str = "", score: Optional[int] = None) -> bool:
+    """Отмечает отклик. Возвращает False, если отклик уже был (повторное нажатие)."""
+    with get_conn() as conn:
+        existing = conn.execute(
+            "SELECT 1 FROM applications WHERE job_id = ?", (job_id,)
+        ).fetchone()
+        if existing:
+            return False
+        conn.execute(
+            """INSERT INTO applications
+               (job_id, title, company, url, score, applied_at, status)
+               VALUES (?,?,?,?,?,?,'applied')""",
+            (job_id, title, company, url, score,
+             datetime.now(timezone.utc).isoformat()),
+        )
+    return True
+
+
+def list_applications(limit: int = 20) -> list:
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT job_id, title, company, url, score, applied_at, status
+               FROM applications ORDER BY applied_at DESC LIMIT ?""",
+            (limit,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def application_stats(stale_days: int = 14) -> dict:
+    """Сводка: всего, за 7 дней, без ответа дольше stale_days."""
+    now = datetime.now(timezone.utc)
+    week_ago = (now - timedelta(days=7)).isoformat()
+    stale_before = (now - timedelta(days=stale_days)).isoformat()
+    with get_conn() as conn:
+        total = conn.execute("SELECT COUNT(*) c FROM applications").fetchone()["c"]
+        last7 = conn.execute(
+            "SELECT COUNT(*) c FROM applications WHERE applied_at >= ?", (week_ago,)
+        ).fetchone()["c"]
+        stale = conn.execute(
+            """SELECT COUNT(*) c FROM applications
+               WHERE status = 'applied' AND applied_at < ?""", (stale_before,)
+        ).fetchone()["c"]
+    return {"total": total, "last7": last7, "stale": stale, "stale_days": stale_days}

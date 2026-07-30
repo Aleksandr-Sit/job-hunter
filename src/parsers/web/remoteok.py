@@ -4,8 +4,8 @@ from datetime import datetime, timezone
 
 import requests
 
-from ..base import BaseParser
 from ...models import Job
+from ..base import BaseParser
 
 logger = logging.getLogger(__name__)
 _API_URL = "https://remoteok.com/api"

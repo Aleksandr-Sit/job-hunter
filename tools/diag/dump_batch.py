@@ -21,17 +21,17 @@ import yaml  # noqa: E402
 def build_parsers():
     from src.parsers.hh_parser import HHParser
     from src.parsers.telegram_parser import TelegramParser
-    from src.parsers.web.remoteok import RemoteOKParser
-    from src.parsers.web.cryptojoblist import CryptoJobListParser
-    from src.parsers.web.laborx import LaborXParser
-    from src.parsers.web.remote3 import Remote3Parser
-    from src.parsers.web.wellfound import WellFoundParser
-    from src.parsers.web.contra import ContraParser
     from src.parsers.web.ashby import AshbyParser
+    from src.parsers.web.contra import ContraParser
+    from src.parsers.web.cryptojoblist import CryptoJobListParser
     from src.parsers.web.greenhouse import GreenhouseParser
+    from src.parsers.web.habr import HabrCareerParser
+    from src.parsers.web.laborx import LaborXParser
     from src.parsers.web.lever import LeverParser
     from src.parsers.web.linkedin import LinkedInParser
-    from src.parsers.web.habr import HabrCareerParser
+    from src.parsers.web.remote3 import Remote3Parser
+    from src.parsers.web.remoteok import RemoteOKParser
+    from src.parsers.web.wellfound import WellFoundParser
 
     cfg = yaml.safe_load((_ROOT / "config" / "settings.yaml").read_text(encoding="utf-8"))
     p = cfg.get("parsers", {})

@@ -17,7 +17,7 @@ _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from src.matcher.pre_filter import score_vacancy, CRITERIA  # noqa: E402
+from src.matcher.pre_filter import CRITERIA, score_vacancy  # noqa: E402
 
 
 def load_jobs() -> list[dict]:

@@ -7,12 +7,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
+import yaml
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-import yaml
 
-from ..base import BaseParser
 from ...models import Job
+from ..base import BaseParser
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +110,6 @@ class LeverParser(BaseParser):
 
 
 if __name__ == "__main__":
-    import sys
     from dotenv import load_dotenv
     load_dotenv(Path(__file__).parent.parent.parent.parent / ".env")
     logging.basicConfig(level=logging.INFO)

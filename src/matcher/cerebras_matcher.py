@@ -14,8 +14,8 @@ from typing import Optional
 
 from openai import OpenAI
 
-from ..models import Job, MatchResult
 from .. import storage
+from ..models import Job, MatchResult
 
 logger = logging.getLogger(__name__)
 
@@ -336,6 +336,7 @@ def match_jobs(jobs: list[Job], threshold: int = 65, batch_size: int = _BATCH_SI
 # ── тест ──────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     import argparse
+
     from dotenv import load_dotenv
     load_dotenv(Path(__file__).parent.parent.parent / ".env")
 

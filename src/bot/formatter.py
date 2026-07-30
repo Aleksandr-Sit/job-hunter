@@ -1,5 +1,6 @@
 """Форматирует вакансию + результат матчинга в Telegram HTML-сообщение."""
 import re
+
 from ..models import Job, MatchResult
 
 _DIV = "─" * 22

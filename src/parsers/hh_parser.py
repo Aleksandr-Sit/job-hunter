@@ -6,15 +6,15 @@ import logging
 import re
 import xml.etree.ElementTree as ET
 from datetime import datetime
-from pathlib import Path
 from email.utils import parsedate_to_datetime
+from pathlib import Path
 
 import requests
 import yaml
 from bs4 import BeautifulSoup
 
-from .base import BaseParser
 from ..models import Job
+from .base import BaseParser
 
 logger = logging.getLogger(__name__)
 
@@ -169,7 +169,6 @@ class HHParser(BaseParser):
 
 
 if __name__ == "__main__":
-    import sys
     from dotenv import load_dotenv
     load_dotenv(Path(__file__).parent.parent.parent / ".env")
     logging.basicConfig(level=logging.INFO)

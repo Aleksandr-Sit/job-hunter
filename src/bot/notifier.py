@@ -10,7 +10,7 @@ import telegram
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from ..models import Job, MatchResult
-from .formatter import format_job_message, format_daily_summary
+from .formatter import format_daily_summary, format_job_message
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +28,7 @@ def _make_keyboard(job: Job) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton("🔗 Открыть", url=job.url),
+            InlineKeyboardButton("✅ Откликнулся", callback_data=f"applied_{job.id}"),
             InlineKeyboardButton("❌ Пропустить", callback_data=f"skip_{job.id}"),
         ]
     ])
@@ -88,6 +89,7 @@ if __name__ == "__main__":
     import argparse
     from datetime import datetime, timezone
     from pathlib import Path
+
     from dotenv import load_dotenv
     load_dotenv(Path(__file__).parent.parent.parent / ".env")
 

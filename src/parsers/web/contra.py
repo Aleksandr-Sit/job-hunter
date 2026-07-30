@@ -6,8 +6,8 @@ from datetime import datetime, timezone
 import requests
 from bs4 import BeautifulSoup
 
-from ..base import BaseParser
 from ...models import Job
+from ..base import BaseParser
 
 logger = logging.getLogger(__name__)
 _URL = "https://contra.com/opportunity/all"

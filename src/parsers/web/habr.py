@@ -7,7 +7,6 @@
 локации — полного текста в карточке нет (как у laborx/linkedin), но роль/домен
 несёт тайтл, а RU-термины criteria (цфа/блокчейн/крипто) их ловят.
 """
-import hashlib
 import logging
 import time
 from datetime import datetime, timezone
@@ -15,8 +14,8 @@ from datetime import datetime, timezone
 import requests
 from bs4 import BeautifulSoup
 
-from ..base import BaseParser
 from ...models import Job
+from ..base import BaseParser
 
 logger = logging.getLogger(__name__)
 

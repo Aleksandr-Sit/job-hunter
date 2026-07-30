@@ -14,8 +14,8 @@ from pathlib import Path
 
 import yaml
 
-from ..base import BaseParser
 from ...models import Job
+from ..base import BaseParser
 
 logger = logging.getLogger(__name__)
 

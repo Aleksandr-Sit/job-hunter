@@ -7,15 +7,15 @@ import logging
 import re
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 import requests
 import yaml
 from bs4 import BeautifulSoup
-from pathlib import Path
 
-from .base import BaseParser
 from ..models import Job
+from .base import BaseParser
 
 logger = logging.getLogger(__name__)
 _CONFIG = Path(__file__).parent.parent.parent / "config"
@@ -96,7 +96,13 @@ def _pick_title(lines: list[str]) -> str:
         cleaned = _clean_title(line)
         if sum(ch.isalpha() for ch in cleaned) >= 8 and cleaned.lower() not in _GENERIC_HEADER:
             return cleaned[:120]
-    return (_clean_title(lines[0])[:120] if lines else "Job opening")
+    # Фолбэк: первая строка с хоть какими-то буквами. Пост целиком из эмодзи/
+    # пунктуации давал ПУСТОЙ заголовок и карточку без названия (найдено тестом).
+    for line in lines:
+        cleaned = _clean_title(line)
+        if any(ch.isalpha() for ch in cleaned):
+            return cleaned[:120]
+    return "Job opening"
 
 
 def _is_resume_post(text_lower: str) -> bool:
@@ -163,7 +169,7 @@ def _fetch_channel(channel: str, timeout: int = 20) -> list[Job]:
         uid = hashlib.md5(f"{channel}_{post_id}".encode()).hexdigest()[:12]
 
         # Заголовок — первая содержательная строка (не эмодзи/хэштег) (F1)
-        lines = [l.strip() for l in text.split("\n") if l.strip()]
+        lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
         title = _pick_title(lines)
 
         sal_min, sal_max, currency = _extract_salary(text)

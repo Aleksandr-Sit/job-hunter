@@ -3,7 +3,6 @@
 Запускается по расписанию через APScheduler.
 """
 import logging
-import os
 import socket
 import threading
 import time
@@ -14,12 +13,12 @@ import yaml
 from apscheduler.schedulers.blocking import BlockingScheduler
 from dotenv import load_dotenv
 
-from .models import Job
 from . import storage
-from .matcher.pre_filter import score_job, _prefilter_version
-from .matcher.cerebras_matcher import match_jobs
-from .bot.notifier import send_jobs_batch, send_daily_summary, send_text
 from .bot.callback_handler import run_listener
+from .bot.notifier import send_daily_summary, send_jobs_batch, send_text
+from .matcher.cerebras_matcher import match_jobs
+from .matcher.pre_filter import _prefilter_version, score_job
+from .models import Job
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
@@ -46,18 +45,18 @@ def _load_config() -> dict:
 def _build_parsers(cfg: dict) -> list:
     from .parsers.hh_parser import HHParser
     from .parsers.telegram_parser import TelegramParser
-    from .parsers.web.remoteok import RemoteOKParser
-    from .parsers.web.cryptojoblist import CryptoJobListParser
-    from .parsers.web.web3career import Web3CareerParser
-    from .parsers.web.laborx import LaborXParser
-    from .parsers.web.remote3 import Remote3Parser
-    from .parsers.web.wellfound import WellFoundParser
-    from .parsers.web.contra import ContraParser
     from .parsers.web.ashby import AshbyParser
+    from .parsers.web.contra import ContraParser
+    from .parsers.web.cryptojoblist import CryptoJobListParser
     from .parsers.web.greenhouse import GreenhouseParser
+    from .parsers.web.habr import HabrCareerParser
+    from .parsers.web.laborx import LaborXParser
     from .parsers.web.lever import LeverParser
     from .parsers.web.linkedin import LinkedInParser
-    from .parsers.web.habr import HabrCareerParser
+    from .parsers.web.remote3 import Remote3Parser
+    from .parsers.web.remoteok import RemoteOKParser
+    from .parsers.web.web3career import Web3CareerParser
+    from .parsers.web.wellfound import WellFoundParser
 
     parsers_cfg = cfg.get("parsers", {})
     parsers = []
