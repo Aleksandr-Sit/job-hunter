@@ -25,12 +25,17 @@ def _get_chat_id() -> str:
 
 
 def _make_keyboard(job: Job) -> InlineKeyboardMarkup:
+    # Два ряда: сверху действия по вакансии, снизу — вердикт. Четыре кнопки в один
+    # ряд Telegram ужимает до нечитаемых огрызков.
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton("🔗 Открыть", url=job.url),
+            InlineKeyboardButton("✉️ Письмо", callback_data=f"letter_{job.id}"),
+        ],
+        [
             InlineKeyboardButton("✅ Откликнулся", callback_data=f"applied_{job.id}"),
             InlineKeyboardButton("❌ Пропустить", callback_data=f"skip_{job.id}"),
-        ]
+        ],
     ])
 
 

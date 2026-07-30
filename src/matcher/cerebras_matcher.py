@@ -406,3 +406,64 @@ if __name__ == "__main__":
             print(f"  Why fits: {match.why_fits}")
             print(f"  Watch out: {match.watch_out}")
             print(f"  {match.recommendation}\n")
+
+
+# ── Генератор сопроводительных писем ──────────────────────────────────────────
+
+_LETTER_INSTRUCTION = """\
+You write SHORT job application cover letters for a specific candidate.
+
+Rules:
+- 4-6 sentences MAX. Recruiters skim; long letters lose.
+- Language: write in RUSSIAN if the company/role is Russian-speaking (Russian
+  title, RU company, CIS team). Otherwise write in ENGLISH, but keep it SIMPLE
+  (the candidate's English is A2 — the letter must sound like something he could
+  plausibly write and defend in a text conversation; no fancy idioms).
+- Structure: (1) which role and why you're writing; (2) 2-3 CONCRETE facts from
+  the profile that match this job; (3) one sentence on availability/format
+  (remote); (4) short closing.
+- Use ONLY facts from the candidate profile below. NEVER invent employers,
+  certificates, degrees or years of experience.
+- No flattery, no "I am passionate about your mission", no buzzwords.
+- Do not mention salary. Do not apologise for missing skills.
+- Output ONLY the letter text — no subject line, no markdown, no commentary."""
+
+
+def generate_cover_letter(title: str, company: str, why_fits: list[str],
+                          recommendation: str = "") -> Optional[str]:
+    """Короткое сопроводительное под конкретную вакансию. None при сбое API.
+
+    Использует уже посчитанные AI-причины совпадения (why_fits) — они извлечены
+    из описания вакансии на этапе матчинга, поэтому письмо получается предметным
+    без повторного хранения полного текста вакансии.
+    """
+    try:
+        client = _get_client()
+    except ValueError as e:
+        logger.error("Cover letter: %s", e)
+        return None
+
+    facts = "\n".join(f"- {r}" for r in (why_fits or [])[:5])
+    prompt = (
+        f"CANDIDATE PROFILE:\n{_build_profile_text()}\n\n===\n\n"
+        f"JOB:\nTitle: {title}\nCompany: {company}\n"
+        f"Why the matcher considered it a fit:\n{facts}\n"
+        f"{('Advice for applying: ' + recommendation) if recommendation else ''}\n\n"
+        "Write the cover letter now."
+    )
+    model_name = os.environ.get("CEREBRAS_MODEL", "gpt-oss-120b")
+    try:
+        resp = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": _LETTER_INSTRUCTION},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.4,
+            max_tokens=600,
+            timeout=_CEREBRAS_TIMEOUT,
+        )
+        return (resp.choices[0].message.content or "").strip() or None
+    except Exception as e:
+        logger.error("Cover letter generation failed: %s", e)
+        return None

@@ -1,4 +1,5 @@
 """Обрабатывает нажатия inline-кнопок Telegram и команды трекера откликов."""
+import asyncio
 import html
 import logging
 import os
@@ -119,6 +120,49 @@ async def _cmd_applications(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     )
 
 
+async def _on_letter(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Генерирует сопроводительное под вакансию и присылает ответом на карточку.
+
+    Смысл: написание письма — главный источник трения при отклике (OFFER_PLAN).
+    Готовый черновик превращает отклик из получаса в пять минут.
+    """
+    query = update.callback_query
+    job_id = query.data[len("letter_"):]
+    msg = query.message
+    title, company, _ = _parse_card(msg.text if msg else "")
+    await query.answer(text="Пишу письмо…")
+
+    cached = None
+    try:
+        cached = storage.get_cached_match(job_id)
+    except Exception as e:
+        logger.warning("Письмо: не удалось прочитать кэш матча %s: %s", job_id, e)
+
+    why = cached.why_fits if cached else []
+    rec = cached.recommendation if cached else ""
+
+    # LLM-вызов синхронный — уводим в поток, чтобы не блокировать polling.
+    from ..matcher.cerebras_matcher import generate_cover_letter
+    letter = await asyncio.to_thread(generate_cover_letter, title, company, why, rec)
+
+    if not letter:
+        await msg.reply_text(
+            "Не удалось сгенерировать письмо (лимит или сбой API). "
+            "Попробуй ещё раз через минуту.",
+            reply_to_message_id=msg.message_id,
+        )
+        return
+
+    await msg.reply_text(
+        f"✉️ <b>Черновик письма</b> — {html.escape(title[:60])}\n"
+        f"<i>Проверь факты и отправь. Правь смело — это черновик, не финал.</i>\n\n"
+        f"<blockquote>{html.escape(letter)}</blockquote>",
+        parse_mode="HTML",
+        reply_to_message_id=msg.message_id,
+        disable_web_page_preview=True,
+    )
+
+
 async def _on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.error("Callback listener error: %s", context.error)
 
@@ -129,6 +173,7 @@ def run_listener() -> None:
     app = Application.builder().token(token).build()
     app.add_handler(CallbackQueryHandler(_on_skip, pattern=r"^skip_"))
     app.add_handler(CallbackQueryHandler(_on_applied, pattern=r"^applied_"))
+    app.add_handler(CallbackQueryHandler(_on_letter, pattern=r"^letter_"))
     app.add_handler(CommandHandler("applications", _cmd_applications))
     app.add_error_handler(_on_error)
     logger.info("Telegram callback listener started")
