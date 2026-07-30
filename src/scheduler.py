@@ -17,7 +17,7 @@ from . import storage
 from .bot.callback_handler import run_listener
 from .bot.notifier import send_daily_summary, send_jobs_batch, send_text
 from .matcher.cerebras_matcher import match_jobs
-from .matcher.pre_filter import _prefilter_version, score_job
+from .matcher.pre_filter import _prefilter_version, dedupe_jobs, score_job
 from .models import Job
 
 load_dotenv(Path(__file__).parent.parent / ".env")
@@ -43,54 +43,10 @@ def _load_config() -> dict:
 
 
 def _build_parsers(cfg: dict) -> list:
-    from .parsers.hh_parser import HHParser
-    from .parsers.telegram_parser import TelegramParser
-    from .parsers.web.ashby import AshbyParser
-    from .parsers.web.contra import ContraParser
-    from .parsers.web.cryptojoblist import CryptoJobListParser
-    from .parsers.web.greenhouse import GreenhouseParser
-    from .parsers.web.habr import HabrCareerParser
-    from .parsers.web.laborx import LaborXParser
-    from .parsers.web.lever import LeverParser
-    from .parsers.web.linkedin import LinkedInParser
-    from .parsers.web.remote3 import Remote3Parser
-    from .parsers.web.remoteok import RemoteOKParser
-    from .parsers.web.web3career import Web3CareerParser
-    from .parsers.web.wellfound import WellFoundParser
-
-    parsers_cfg = cfg.get("parsers", {})
-    parsers = []
-
-    if parsers_cfg.get("hh", {}).get("enabled", True):
-        parsers.append(HHParser())
-    if parsers_cfg.get("remoteok", {}).get("enabled", True):
-        parsers.append(RemoteOKParser())
-    if parsers_cfg.get("cryptojoblist", {}).get("enabled", True):
-        parsers.append(CryptoJobListParser())
-    if parsers_cfg.get("web3career", {}).get("enabled", True):
-        parsers.append(Web3CareerParser())
-    if parsers_cfg.get("laborx", {}).get("enabled", True):
-        parsers.append(LaborXParser())
-    if parsers_cfg.get("remote3", {}).get("enabled", True):
-        parsers.append(Remote3Parser())
-    if parsers_cfg.get("wellfound", {}).get("enabled", False):
-        parsers.append(WellFoundParser())
-    if parsers_cfg.get("contra", {}).get("enabled", False):
-        parsers.append(ContraParser())
-    if parsers_cfg.get("ashby", {}).get("enabled", True):
-        parsers.append(AshbyParser())
-    if parsers_cfg.get("greenhouse", {}).get("enabled", True):
-        parsers.append(GreenhouseParser())
-    if parsers_cfg.get("lever", {}).get("enabled", True):
-        parsers.append(LeverParser())
-    if parsers_cfg.get("linkedin", {}).get("enabled", False):
-        parsers.append(LinkedInParser())
-    if parsers_cfg.get("habr", {}).get("enabled", True):
-        parsers.append(HabrCareerParser())
-    if parsers_cfg.get("telegram", {}).get("enabled", True):
-        parsers.append(TelegramParser())
-
-    return parsers
+    """Состав источников — в src/parsers/registry.py (один список на проект,
+    его же использует tools/diag/dump_batch.py)."""
+    from .parsers.registry import build_parsers
+    return build_parsers(cfg)
 
 
 def _send_zero_alert(total: int, unseen: int, prefiltered: int, matched: int, threshold: int) -> None:
@@ -182,7 +138,13 @@ def run_once() -> None:
         _send_zero_alert(total_parsed, len(unseen), len(new_jobs), 0, threshold)
         return
 
-    # 4. Отправка в Telegram
+    # 4. Отправка в Telegram (сначала схлопываем near-дубликаты: одна роль,
+    # пришедшая с разных бордов/локаций, имеет разные id и проходит дедуп по id)
+    before = len(matched)
+    matched = dedupe_jobs(matched)
+    if before != len(matched):
+        logger.info("Near-дубликаты схлопнуты: %d → %d", before, len(matched))
+
     sent = send_jobs_batch(matched)
     logger.info("Sent %d notifications", sent)
 

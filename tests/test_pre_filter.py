@@ -163,3 +163,41 @@ class TestProfileFallback:
         )
         monkeypatch.setattr(pf, "_PROFILE_DIR", tmp_path)
         assert pf._load_avoid_keywords() == {"real"}
+
+
+class TestDedupe:
+    """M2: одна роль с разных бордов = разные id → проходила дедуп по id.
+    Реальный случай 25.07: Ripple ×3, Coinbase Risk & Monitoring ×2."""
+
+    def test_same_company_and_title_collapses(self):
+        from src.matcher.pre_filter import dedupe_key
+        a = dedupe_key("Ripple", "Professional Services Consultant")
+        b = dedupe_key("ripple", "Professional  Services   Consultant")
+        assert a == b
+
+    def test_location_suffix_ignored(self):
+        from src.matcher.pre_filter import dedupe_key
+        a = dedupe_key("Coinbase", "Risk & Monitoring Analyst IV (EMEA)")
+        b = dedupe_key("Coinbase", "Risk & Monitoring Analyst IV (Remote)")
+        assert a == b
+
+    def test_different_roles_kept(self):
+        from src.matcher.pre_filter import dedupe_key
+        assert dedupe_key("Ripple", "Treasury Analyst") != \
+            dedupe_key("Ripple", "Support Specialist")
+
+    def test_dedupe_jobs_keeps_first_and_order(self):
+        from src.matcher.pre_filter import dedupe_jobs
+        from src.models import Job
+
+        def j(jid, title, company):
+            return Job(id=jid, title=title, company=company, description="",
+                       url="http://x", source="test")
+
+        pairs = [
+            (j("1", "Ops Specialist", "Ripple"), None),
+            (j("2", "Ops Specialist", "Ripple"), None),   # дубль
+            (j("3", "Support Agent", "Nansen"), None),
+        ]
+        out = dedupe_jobs(pairs)
+        assert [p[0].id for p in out] == ["1", "3"]

@@ -321,6 +321,36 @@ def score_vacancy(title: str, text: str, role_key: str) -> dict:
     }
 
 
+def dedupe_key(company: str | None, title: str | None) -> str:
+    """Ключ near-дубликата: одна и та же роль на разных бордах (или в нескольких
+    локациях) приходит с РАЗНЫМИ id и проходит дедуп по id. В боевом прогоне
+    25.07 так пришли «Professional Services Consultant @ Ripple» ×3 и
+    «Risk & Monitoring Analyst IV @ Coinbase» ×2 (HEALTH_AUDIT M2).
+
+    Нормализуем: регистр, пунктуация, лишние пробелы и хвосты локаций/уровней
+    в скобках («… (EMEA)», «… (Remote)») не должны делать вакансии разными.
+    """
+    text = f"{_n(company)}|{_n(title)}"
+    text = re.sub(r"\([^)]*\)", " ", text)          # хвосты в скобках
+    text = re.sub(r"[^\w|]+", " ", text, flags=re.UNICODE)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def dedupe_jobs(pairs: list) -> list:
+    """Оставляет по одному представителю на near-дубликат, сохраняя порядок.
+    Вход: [(Job, MatchResult)] — как в scheduler перед отправкой."""
+    seen: set[str] = set()
+    out = []
+    for item in pairs:
+        job = item[0] if isinstance(item, tuple) else item
+        key = dedupe_key(getattr(job, "company", ""), getattr(job, "title", ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(item)
+    return out
+
+
 def score_job(job: Job) -> dict:
     """Скорит вакансию по всем ролям из criteria.yaml (crypto_ops, web3_support,
     ai_automation, qa_web3), возвращает лучшую по баллу."""

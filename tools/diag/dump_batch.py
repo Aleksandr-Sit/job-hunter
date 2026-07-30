@@ -19,37 +19,13 @@ import yaml  # noqa: E402
 
 
 def build_parsers():
-    from src.parsers.hh_parser import HHParser
-    from src.parsers.telegram_parser import TelegramParser
-    from src.parsers.web.ashby import AshbyParser
-    from src.parsers.web.contra import ContraParser
-    from src.parsers.web.cryptojoblist import CryptoJobListParser
-    from src.parsers.web.greenhouse import GreenhouseParser
-    from src.parsers.web.habr import HabrCareerParser
-    from src.parsers.web.laborx import LaborXParser
-    from src.parsers.web.lever import LeverParser
-    from src.parsers.web.linkedin import LinkedInParser
-    from src.parsers.web.remote3 import Remote3Parser
-    from src.parsers.web.remoteok import RemoteOKParser
-    from src.parsers.web.wellfound import WellFoundParser
+    """Тот же состав, что у боевого планировщика (src/parsers/registry.py).
+    Раньше список дублировался здесь и разъезжался со scheduler — Habr выпадал
+    из всех замеров воронки (HEALTH_AUDIT F11)."""
+    from src.parsers.registry import build_parsers as _build
 
     cfg = yaml.safe_load((_ROOT / "config" / "settings.yaml").read_text(encoding="utf-8"))
-    p = cfg.get("parsers", {})
-    out = []
-    if p.get("hh", {}).get("enabled", True): out.append(HHParser())
-    if p.get("remoteok", {}).get("enabled", True): out.append(RemoteOKParser())
-    if p.get("cryptojoblist", {}).get("enabled", True): out.append(CryptoJobListParser())
-    if p.get("laborx", {}).get("enabled", True): out.append(LaborXParser())
-    if p.get("remote3", {}).get("enabled", True): out.append(Remote3Parser())
-    if p.get("wellfound", {}).get("enabled", False): out.append(WellFoundParser())
-    if p.get("contra", {}).get("enabled", False): out.append(ContraParser())
-    if p.get("ashby", {}).get("enabled", True): out.append(AshbyParser())
-    if p.get("greenhouse", {}).get("enabled", True): out.append(GreenhouseParser())
-    if p.get("lever", {}).get("enabled", True): out.append(LeverParser())
-    if p.get("linkedin", {}).get("enabled", False): out.append(LinkedInParser())
-    if p.get("habr", {}).get("enabled", True): out.append(HabrCareerParser())
-    if p.get("telegram", {}).get("enabled", True): out.append(TelegramParser())
-    return out
+    return _build(cfg)
 
 
 def fetch_jobs() -> list[dict]:
