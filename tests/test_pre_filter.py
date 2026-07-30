@@ -130,3 +130,36 @@ class TestScoreVacancy:
         )
         assert ru["passed_gate"] is True
         assert ru["recommend"] == en["recommend"]
+
+
+class TestProfileFallback:
+    """Профиль личный и в .gitignore → в свежем клоне/CI его нет.
+    Импорт и загрузка не должны падать (на этом падал CI)."""
+
+    def test_missing_profile_gives_empty_stoplist(self, tmp_path, monkeypatch):
+        import src.matcher.pre_filter as pf
+        monkeypatch.setattr(pf, "_PROFILE_DIR", tmp_path)
+        assert pf._load_avoid_keywords() == set()
+
+    def test_falls_back_to_example(self, tmp_path, monkeypatch):
+        import json as _json
+
+        import src.matcher.pre_filter as pf
+        (tmp_path / "preferences.json.example").write_text(
+            _json.dumps({"industries_avoid": ["Gambling"]}), encoding="utf-8"
+        )
+        monkeypatch.setattr(pf, "_PROFILE_DIR", tmp_path)
+        assert pf._load_avoid_keywords() == {"gambling"}
+
+    def test_real_file_wins_over_example(self, tmp_path, monkeypatch):
+        import json as _json
+
+        import src.matcher.pre_filter as pf
+        (tmp_path / "preferences.json").write_text(
+            _json.dumps({"industries_avoid": ["Real"]}), encoding="utf-8"
+        )
+        (tmp_path / "preferences.json.example").write_text(
+            _json.dumps({"industries_avoid": ["Example"]}), encoding="utf-8"
+        )
+        monkeypatch.setattr(pf, "_PROFILE_DIR", tmp_path)
+        assert pf._load_avoid_keywords() == {"real"}

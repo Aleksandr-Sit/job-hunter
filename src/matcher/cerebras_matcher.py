@@ -133,11 +133,26 @@ def _scoring_version() -> str:
     return hashlib.md5(blob.encode("utf-8")).hexdigest()[:12]
 
 
+def _read_profile_file(name: str) -> str:
+    """Читает файл профиля; в свежем клоне/CI личного файла нет → берём `.example`.
+    Профиль в .gitignore (личные данные), поэтому отсутствие — штатная ситуация."""
+    for candidate in (name, f"{name}.example"):
+        path = _PROFILE_DIR / candidate
+        try:
+            return path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+    raise FileNotFoundError(
+        f"Нет {name} в config/profile/ (ни личного, ни .example). "
+        "Скопируй .example и заполни своими данными."
+    )
+
+
 @lru_cache(maxsize=1)
 def _build_profile_text() -> str:
-    resume_full = (_PROFILE_DIR / "resume.md").read_text(encoding="utf-8")
-    skills = (_PROFILE_DIR / "skills.json").read_text(encoding="utf-8")
-    prefs_raw = json.loads((_PROFILE_DIR / "preferences.json").read_text(encoding="utf-8"))
+    resume_full = _read_profile_file("resume.md")
+    skills = _read_profile_file("skills.json")
+    prefs_raw = json.loads(_read_profile_file("preferences.json"))
 
     # Только поля, нужные для матчинга (убираем locations_ok, employment_type и т.д.)
     prefs_compact = {k: prefs_raw[k] for k in (

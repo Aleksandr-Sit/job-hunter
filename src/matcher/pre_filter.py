@@ -128,8 +128,20 @@ def _load_criteria() -> dict:
 
 
 def _load_avoid_keywords() -> set[str]:
-    prefs = json.loads((_PROFILE_DIR / "preferences.json").read_text(encoding="utf-8"))
-    return {i.lower() for i in prefs.get("industries_avoid", [])}
+    """Отраслевой стоп-лист из профиля.
+
+    Профиль личный и в .gitignore (см. CLAUDE.md), поэтому в свежем клоне и в CI
+    его нет — читаем `.example`, а если и его нет, работаем с пустым стоп-листом.
+    Импорт модуля не должен падать из-за отсутствия личного файла.
+    """
+    for name in ("preferences.json", "preferences.json.example"):
+        path = _PROFILE_DIR / name
+        try:
+            prefs = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        return {i.lower() for i in prefs.get("industries_avoid", [])}
+    return set()
 
 
 CRITERIA = _load_criteria()
