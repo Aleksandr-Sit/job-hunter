@@ -424,6 +424,16 @@ Rules:
   (remote); (4) short closing.
 - Use ONLY facts from the candidate profile below. NEVER invent employers,
   certificates, degrees or years of experience.
+- CRITICAL — never merge the two separate experience tracks:
+  (a) 6 years of Web3/DeFi = the candidate's OWN on-chain operations as a
+      self-employed operator (wallets, exchanges, transactions, P2P). It is
+      NOT customer-facing work. Never write that he "supported users" or
+      "handled requests" during this period.
+  (b) 8+ years of customer/technical support and sales = employed at retail and
+      telecom companies (M.Video-Eldorado, MegaFon Retail, ATRI). This is where
+      client requests, SLA and troubleshooting come from.
+  Attributing (b) duties to period (a) is a factual error that collapses in an
+  interview. Keep them clearly separate.
 - No flattery, no "I am passionate about your mission", no buzzwords.
 - Do not mention salary. Do not apologise for missing skills.
 - Output ONLY the letter text — no subject line, no markdown, no commentary."""
