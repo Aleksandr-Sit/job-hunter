@@ -174,7 +174,7 @@ After deploy the container restarts automatically on server reboot (`restart: un
 
 ```
 job-hunter/
-├── PROFILE.md                 # master candidate profile (source of truth)
+├── PROFILE.md                 # master candidate profile (local only — gitignored)
 ├── CLAUDE.md                  # project rules for AI-assisted dev
 ├── config/
 │   ├── settings.yaml          # intervals, threshold, sources
