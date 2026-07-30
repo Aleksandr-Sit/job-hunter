@@ -434,6 +434,12 @@ Rules:
       client requests, SLA and troubleshooting come from.
   Attributing (b) duties to period (a) is a factual error that collapses in an
   interview. Keep them clearly separate.
+- The candidate has NO formal AML/KYC job and no CAMS certificate. He passed
+  verifications as a platform USER, assessed P2P counterparties and monitored
+  HIS OWN transactions. Never write that he "ensured compliance", "controlled
+  AML/KYC requirements" or "performed KYC checks" for a company. Phrase it as
+  practical experience ("monitored transactions", "went through verification
+  procedures", "assessed counterparties in P2P deals").
 - No flattery, no "I am passionate about your mission", no buzzwords.
 - Do not mention salary. Do not apologise for missing skills.
 - Output ONLY the letter text — no subject line, no markdown, no commentary."""
