@@ -1,6 +1,13 @@
 # Секреты — никогда не коммитить
 .env
 
+# Личный профиль кандидата: ФИО, контакты, история работы, ЗАРПЛАТНЫЕ ОЖИДАНИЯ.
+# Репозиторий публичный (портфолио) → реальный профиль НЕ коммитим.
+# В репо только *.example; реальные файлы живут локально и на VPS (bind-mount
+# ./config/profile:/app/config/profile — доставляются один раз через scp, как .env).
+config/profile/*
+!config/profile/*.example
+
 # Данные и логи (локальные, личные)
 data/*
 !data/logs/
@@ -35,3 +42,4 @@ docs/CAREER_ADJACENCY_MAP.md
 docs/RU_CRYPTO_MARKET_MAP.md
 docs/RESUME_UPKEEP.md
 docs/resume_drafts.md
+docs/PROJECT_REVIEW.md

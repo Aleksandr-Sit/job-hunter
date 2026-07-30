@@ -1,0 +1,33 @@
+{
+  "_comment": "ПРИМЕР. Скопируй в preferences.json и заполни. Реальный файл в .gitignore — зарплатные ожидания не публикуются.",
+  "roles": [
+    "Crypto Operations Specialist",
+    "Web3 Support Specialist",
+    "AI Automation Specialist"
+  ],
+  "salary": {
+    "min_rub_monthly": 0,
+    "preferred_rub_monthly": 0,
+    "min_usd_monthly": 0,
+    "preferred_usd_monthly": 0,
+    "currency_preference": ["USD", "USDT", "RUB"]
+  },
+  "work_format": {
+    "remote": true,
+    "hybrid": false,
+    "onsite": false
+  },
+  "employment_type": ["full-time", "contract"],
+  "locations_ok": ["Remote"],
+  "tech_stack_must": ["Web3", "Blockchain", "DeFi", "Crypto"],
+  "tech_stack_nice": ["EVM", "Solana", "Wallet", "On-chain", "CEX", "DEX", "Python", "Docker"],
+  "industries_preferred": ["Web3 / Crypto", "DeFi", "AI Automation"],
+  "industries_avoid": ["Gambling", "Adult content"],
+  "experience_level": "mid",
+  "open_to_startup": true,
+  "open_to_equity": false,
+  "open_to_relocation": false,
+  "relocation_countries": [],
+  "english_level": "B1",
+  "notes": "Короткое описание кандидата для AI-матчинга: что ищет, сильные стороны, ограничения."
+}

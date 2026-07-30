@@ -1,0 +1,30 @@
+{
+  "_comment": "ПРИМЕР. Скопируй в skills.json и заполни своими навыками. Группы — произвольные; идут в промпт AI-матчинга.",
+  "web3_blockchain": [
+    {"name": "Web3 / DeFi operations", "level": "advanced", "years": 3},
+    {"name": "On-chain transactions (swaps, bridges, staking)", "level": "advanced", "years": 3},
+    {"name": "Wallet management (hot/cold)", "level": "advanced", "years": 3}
+  ],
+  "wallets": ["MetaMask", "Ledger"],
+  "networks": ["Ethereum", "Arbitrum", "Solana"],
+  "defi_protocols": ["Uniswap", "Lido"],
+  "exchanges": ["Binance", "OKX"],
+  "analytics_tools": ["Etherscan", "DeBank"],
+  "qa_testing": [
+    {"name": "Manual testing", "level": "intermediate"},
+    {"name": "Bug reporting", "level": "intermediate"}
+  ],
+  "ai_automation": [
+    {"name": "Prompt engineering", "level": "intermediate"},
+    {"name": "Telegram Bot API", "level": "intermediate"}
+  ],
+  "infrastructure": [
+    {"name": "VPS servers", "level": "intermediate"},
+    {"name": "Linux CLI (basic)", "level": "beginner"}
+  ],
+  "operations_support": [
+    {"name": "Customer support", "level": "advanced"},
+    {"name": "SLA compliance", "level": "intermediate"}
+  ],
+  "domains": ["Web3 / Crypto", "DeFi", "Crypto Operations"]
+}
