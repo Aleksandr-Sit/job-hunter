@@ -201,3 +201,43 @@ class TestDedupe:
         ]
         out = dedupe_jobs(pairs)
         assert [p[0].id for p in out] == ["1", "3"]
+
+
+class TestOnsitePenalty:
+    """«На месте работодателя» — стандартная формулировка HH для офиса.
+    Её отсутствие в списке означало, что офисные вакансии с HH шли без штрафа
+    (найдено 30.07 на реальной вакансии QA/техподдержка в Москве)."""
+
+    def test_hh_standard_office_phrase_caught(self):
+        from src.matcher.pre_filter import CRITERIA, _hits
+        assert _hits(CRITERIA["onsite_penalty"], "полный день на месте работодателя")[0]
+
+    def test_back_office_not_penalized(self):
+        # «бэк-офис» — профильная ops-роль, а не признак офисной работы
+        from src.matcher.pre_filter import CRITERIA, _hits
+        assert _hits(CRITERIA["onsite_penalty"], "специалист бэк-офиса, удалённо")[0] == 0
+
+    def test_remote_beats_office_mention(self):
+        # Упоминание офиса не должно штрафовать, если вакансия удалённая
+        from src.matcher.pre_filter import score_vacancy
+        res = score_vacancy(
+            "Специалист технической поддержки",
+            "Финтех-платформа. Поддержка пользователей, SLA. Удалённо, офис в Москве опционально.",
+            "support_fintech",
+        )
+        assert "только офис" not in " ".join(res["reasons"])
+
+    def test_office_vacancy_penalized(self):
+        from src.matcher.pre_filter import score_vacancy
+        office = score_vacancy(
+            "QA ручной тестировщик/техподдержка",
+            "Ручное тестирование, первая линия поддержки криптобиржи. "
+            "Москва, на месте работодателя, график 5/2.",
+            "qa_web3",
+        )
+        remote = score_vacancy(
+            "QA ручной тестировщик/техподдержка",
+            "Ручное тестирование, первая линия поддержки криптобиржи. Удалённо.",
+            "qa_web3",
+        )
+        assert office["score"] < remote["score"]
