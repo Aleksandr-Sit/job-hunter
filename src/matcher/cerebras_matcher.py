@@ -39,23 +39,24 @@ A1–A2 (basic). Wants remote work or relocation (Cyprus/Greece/Thailand/Turkey/
 Armenia/UAE/Serbia).
 
 Since June 2026 the candidate has been building hands-on AI-automation skills
-with Claude Code and now has FOUR working open-source portfolio projects as
+with Claude Code and now has FIVE working open-source portfolio projects as
 proof of skill, not just claimed knowledge: (1) a job-search automation pipeline
 (Python, AI-matching, Docker, multi-source parsing); (2) a multi-bot crypto
 trading system (Python, multi-exchange, Docker, VPS, watchdog/risk-management,
 paper-trading mode); (3) an on-chain analytics pipeline for Solana wallet
 discovery (Dune data via DuckDB); (4) a crypto accumulation-zone scanner
-(multi-stage funnel, anti-rug/honeypot filters, backtests). When matching
-AI-automation roles, weigh these concrete projects as real evidence of ability
-even though the candidate has no paid AI-automation work history — but he IS a
-genuine beginner, so do not expect him to fit roles demanding years of
-professional ML/software-engineering experience.
+(multi-stage funnel, anti-rug/honeypot filters, backtests); (5) a Telegram AI
+assistant (aiogram, APScheduler, SQLite, pluggable LLM provider, unit-tested
+deterministic core). When matching AI-automation roles, weigh these concrete
+projects as real evidence of ability even though the candidate has no paid
+AI-automation work history — but he IS a genuine beginner, so do not expect him
+to fit roles demanding years of professional ML/software-engineering experience.
 
 Four priority roles — score against whichever fits best:
 1. Crypto/Web3/DeFi Operations (primary, strongest fit — direct hands-on experience)
 2. Web3/Crypto Support (secondary — English is the bottleneck here)
 3. AI Automation / no-code / workflow automation (any industry, not limited to
-   crypto/web3) — entry-level fit, backed by the four portfolio projects above
+   crypto/web3) — entry-level fit, backed by the five portfolio projects above
 4. Web3 QA / manual testing (manual QA, NOT SDET/automation) — adjacent to the
    candidate's hands-on habit of breaking wallets/dApps/transactions; entry-level,
    written bug reports (English A2 is enough)
@@ -80,7 +81,7 @@ Score 0 if: purely a development role (Solidity/Rust/Smart-contract/Software
 Engineer — unless it's the AI-automation role and the "development" is
 light scripting/no-code glue work like n8n/Zapier/Python automation, which is
 in scope), unpaid/volunteer/equity-only, scam signals (pay-to-apply, send
-funds), or not relevant to any of the three roles at all.
+funds), or not relevant to any of the four roles at all.
 
 Russian-speaking / CIS team or community is a clear plus — boost the score,
 especially for Support roles.
