@@ -97,6 +97,43 @@ def _high_exp_required(blob: str) -> bool:
             return True
     return False
 
+# ── 3b. Требование гражданства / права на работу ──────────────────────────────
+# Кандидат — гражданин РФ с разрешением на работу только в РФ. Вакансии,
+# требующие паспорт/гражданство ЕС или США, недостижимы независимо от совпадения
+# по навыкам, и спонсорство их не решает (паспорт не спонсируют). Найдено 02.08
+# на реальной вакансии: удалённая Russian-speaking роль с «valid EU passport»
+# набирала 84 балла и была бы отправлена.
+_CITIZENSHIP_REQUIRED = re.compile(
+    r'\b(eu passport|european passport|eu citizenship|eu citizen|'
+    r'us citizen|green card|uk citizen|british passport|'
+    r'гражданство ес|паспорт ес|гражданство сша)\b',
+    re.IGNORECASE,
+)
+# «right/eligible/authorized to work in X» — дисквалифицирует, только если X не РФ
+# (иначе отсекли бы обычные российские вакансии «право работать в РФ»).
+_RIGHT_TO_WORK = re.compile(
+    r'(?:right to work|eligible to work|authoriz(?:ed|ation) to work|legally able to work)'
+    r'\s+in\s+(?:the\s+)?([a-zа-я\s]{2,20})',
+    re.IGNORECASE,
+)
+_NON_RF_JURISDICTION = re.compile(
+    r'\b(eu|e\.u\.|europe|european union|uk|united kingdom|us|u\.s\.|usa|'
+    r'united states|schengen|germany|poland|bulgaria|portugal|spain|cyprus|'
+    r'netherlands|ireland|france|italy|greece)\b',
+    re.IGNORECASE,
+)
+
+
+def _citizenship_barrier(blob: str) -> bool:
+    """True, если вакансия требует гражданство/право на работу, которых нет."""
+    if _CITIZENSHIP_REQUIRED.search(blob):
+        return True
+    for m in _RIGHT_TO_WORK.finditer(blob):
+        if _NON_RF_JURISDICTION.search(m.group(1)):
+            return True
+    return False
+
+
 # ── 4. Иностранные языки (кроме ru/en) ────────────────────────────────────────
 _FOREIGN_LANG_PATTERN = re.compile(
     r'\b(chinese|mandarin|deutsch|german|french|français|spanish|español|'
@@ -216,6 +253,9 @@ def _extra_hard_gates(title: str, text: str, role_key: str) -> str | None:
 
     if _foreign_lang_required(blob):
         return "требуется язык кроме ru/en"
+
+    if _citizenship_barrier(blob):
+        return "требуется гражданство/право на работу в ЕС или США"
 
     return None
 

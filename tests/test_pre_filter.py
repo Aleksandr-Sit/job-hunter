@@ -241,3 +241,43 @@ class TestOnsitePenalty:
             "qa_web3",
         )
         assert office["score"] < remote["score"]
+
+
+class TestCitizenshipBarrier:
+    """Кандидат — гражданин РФ с разрешением на работу только в РФ.
+    Вакансии с требованием паспорта/гражданства ЕС/США недостижимы (найдено
+    02.08 на реальной вакансии: remote + «valid EU passport» = 84 балла)."""
+
+    @pytest.mark.parametrize("text", [
+        "Needs to have a valid EU passport",
+        "EU citizenship is required for this role",
+        "Applicants must be US citizens or green card holders",
+        "You must have the right to work in the EU",
+        "Candidates should be eligible to work in the United Kingdom",
+        "требуется гражданство ЕС",
+    ])
+    def test_barrier_detected(self, text):
+        from src.matcher.pre_filter import _citizenship_barrier
+        assert _citizenship_barrier(text.lower()) is True
+
+    @pytest.mark.parametrize("text", [
+        "remote position, we hire worldwide",
+        "eligible to work in Russia",
+        "право работать в РФ",
+        "we provide visa support and relocation assistance",
+        "passport required for business trips",
+    ])
+    def test_no_false_positive(self, text):
+        from src.matcher.pre_filter import _citizenship_barrier
+        assert _citizenship_barrier(text.lower()) is False
+
+    def test_remote_vacancy_with_eu_passport_is_gated(self):
+        from src.matcher.pre_filter import score_vacancy
+        res = score_vacancy(
+            "Russian Speaking Crypto Support Specialist",
+            "Russian speaking support for a crypto exchange, wallets, transactions. "
+            "Requirements: native Russian, valid EU passport required. Fully remote.",
+            "web3_support",
+        )
+        assert res["passed_gate"] is False
+        assert res["recommend"] is False
