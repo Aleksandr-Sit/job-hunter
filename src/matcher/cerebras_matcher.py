@@ -52,14 +52,30 @@ projects as real evidence of ability even though the candidate has no paid
 AI-automation work history — but he IS a genuine beginner, so do not expect him
 to fit roles demanding years of professional ML/software-engineering experience.
 
-Four priority roles — score against whichever fits best:
+IMPORTANT — the candidate ALSO has 8+ years of documented SALES and customer
+service experience (retail and telecom), and it is his longest verified track
+record: consistently top-3 seller at his location, recognised among the
+company's 200 best sellers nationwide, sent by management to ramp up newly
+opened stores, sales plan always met and regularly exceeded. Treat sales as a
+REAL target direction, not as a downside.
+
+SEVEN target directions — score against whichever fits best:
 1. Crypto/Web3/DeFi Operations (primary, strongest fit — direct hands-on experience)
-2. Web3/Crypto Support (secondary — English is the bottleneck here)
-3. AI Automation / no-code / workflow automation (any industry, not limited to
+2. Web3/Crypto Support (English is the bottleneck here)
+3. Customer/Technical Support in fintech, payments, IT or SaaS — backed by 8+
+   years of client-facing work; Russian-speaking desks are ideal
+4. AML / KYC / transaction monitoring / compliance — backed by practical P2P,
+   fiat on/off-ramp and transaction-verification experience (NOTE: no formal AML
+   employment and no CAMS certificate — entry level, not senior/MLRO roles)
+5. AI Automation / no-code / workflow automation (any industry, not limited to
    crypto/web3) — entry-level fit, backed by the five portfolio projects above
-4. Web3 QA / manual testing (manual QA, NOT SDET/automation) — adjacent to the
+6. Web3 QA / manual testing (manual QA, NOT SDET/automation) — adjacent to the
    candidate's hands-on habit of breaking wallets/dApps/transactions; entry-level,
    written bug reports (English A2 is enough)
+7. Remote SALES / account management on INBOUND leads — best in crypto, fintech,
+   payments, B2B or e-commerce, where his 8+ years of sales plus crypto domain
+   knowledge is a rare combination. Inbound flow, warm leads, account management
+   and upselling to existing clients are all GOOD fits.
 
 Evaluate each job listing against the candidate profile and score the fit from 0 to 100.
 
@@ -71,17 +87,23 @@ Scoring guide:
 - 0–49: poor fit
 
 Score down for: requiring fluent/native English or C1/C2 (penalize harder for
-Support roles than Operations); voice/phone support or call center; sales
-quotas/cold calling/upsell; leadership titles (Head/Director/Lead/VP/Chief);
+Support roles than Operations); voice/phone support IN ENGLISH or call-centre
+work; COLD calling, cold outbound prospecting, "active client search", field
+visits and heavy travel; leadership titles (Head/Director/Lead/VP/Chief/MLRO);
 office-only in a location outside Russia/Cyprus/Greece/Thailand/Turkey/Armenia/
 UAE/Serbia; for AI-automation roles, requiring years of professional ML/SWE
 experience, a CS degree, or research-scientist-level depth.
+
+Do NOT penalise a job merely for being a sales role. Penalise only the cold
+outbound part described above. Sales on inbound leads, account management,
+customer success and upselling to existing clients match the candidate's
+strongest verified experience — score those on their merits.
 
 Score 0 if: purely a development role (Solidity/Rust/Smart-contract/Software
 Engineer — unless it's the AI-automation role and the "development" is
 light scripting/no-code glue work like n8n/Zapier/Python automation, which is
 in scope), unpaid/volunteer/equity-only, scam signals (pay-to-apply, send
-funds), or not relevant to any of the four roles at all.
+funds), or not relevant to any of the seven target directions at all.
 
 Russian-speaking / CIS team or community is a clear plus — boost the score,
 especially for Support roles.
@@ -101,18 +123,23 @@ Respond ONLY with a valid JSON array, no markdown, no extra text:
 
 
 def _compact_resume(text: str) -> str:
-    """Оставляет только релевантные секции резюме — убирает личные данные и retail-опыт."""
-    keep = {"профессиональный профиль", "ключевые навыки", "языки", "сильные стороны"}
-    result, skip, in_exp, in_web3 = [], True, False, False
+    """Профиль для промпта: убираем только ЛИЧНЫЕ ДАННЫЕ (контакты).
+
+    Раньше отсюда вырезался ВЕСЬ опыт найма, кроме Web3-блока («убирает
+    retail-опыт») — это было логично, пока целью была одна крипто-роль.
+    Сейчас направлений семь, и четыре из них (продажи, поддержка в финтех/IT,
+    AML, крипто-поддержка) опираются именно на розницу и телеком. Из-за среза
+    модель не видела 8+ лет продаж и поддержки и ставила таким вакансиям 0
+    с формулировкой «не имеет отношения» (замер 05.08.2026).
+
+    Контакты убираем осознанно: для матчинга бесполезны, а в промпт лишние
+    персональные данные слать не нужно.
+    """
+    drop_sections = ("личная информация", "контакты")
+    result, skip = [], False
     for line in text.split("\n"):
-        ll = line.lower().strip()
         if line.startswith("## "):
-            in_exp = "опыт работы" in ll
-            in_web3 = False
-            skip = not (any(s in ll for s in keep) or in_exp)
-        elif line.startswith("### ") and in_exp:
-            in_web3 = "independent web3" in ll or "web3" in ll
-            skip = not in_web3
+            skip = any(s in line.lower() for s in drop_sections)
         if not skip:
             result.append(line)
     return "\n".join(result).strip()
