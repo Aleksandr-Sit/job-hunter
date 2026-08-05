@@ -134,6 +134,16 @@ def _citizenship_barrier(blob: str) -> bool:
     return False
 
 
+# РФ/СНГ-локации: работать там кандидат может без визы и переезда, поэтому
+# указание такого города НЕ считается «офисом в неподходящей локации».
+_RU_LOCATION = re.compile(
+    r'(росси|russia|москв|moscow|санкт|петербург|spb|самар|samara|'
+    r'екатеринбург|новосибирск|казан|нижний новгород|краснодар|'
+    r'снг|\bcis\b|беларус|belarus|казахстан|kazakhstan|армени|armenia|'
+    r'удалён|удален|remote|anywhere)',
+    re.IGNORECASE,
+)
+
 # ── 4. Иностранные языки (кроме ru/en) ────────────────────────────────────────
 _FOREIGN_LANG_PATTERN = re.compile(
     r'\b(chinese|mandarin|deutsch|german|french|français|spanish|español|'
@@ -370,6 +380,15 @@ def score_vacancy(title: str, text: str, role_key: str) -> dict:
         score += _W["remote"]; reasons.append("remote")
     if reloc:
         score += _W["relocation"]; reasons.append("страна релокации подходит")
+    # Явно указанная локация, которой нет ни в remote, ни в списке релокации, ни в
+    # РФ — это офис в стране, куда кандидат не поедет (нужна виза/переезд).
+    # Раньше такие вакансии штрафа не получали, если страна не упоминалась в тексте
+    # описания (Fireblocks APAC: location=Singapore, в описании страны нет).
+    if not remote and not reloc:
+        loc_match = re.search(r"location:\s*([^\n]+)", blob)
+        if loc_match and not _RU_LOCATION.search(loc_match.group(1)):
+            onsite = True
+
     if onsite and not remote and not reloc:
         score += _W["onsite"]; reasons.append("только офис в неподходящей локации")
 
@@ -427,9 +446,17 @@ def dedupe_jobs(pairs: list) -> list:
 
 
 def score_job(job: Job) -> dict:
-    """Скорит вакансию по всем ролям из criteria.yaml (crypto_ops, web3_support,
-    ai_automation, qa_web3), возвращает лучшую по баллу."""
-    results = [score_vacancy(job.title, job.description, r) for r in CRITERIA["roles"]]
+    """Скорит вакансию по всем ролям из criteria.yaml, возвращает лучшую по баллу.
+
+    Локация подмешивается в текст: она хранится ОТДЕЛЬНЫМ полем, и раньше скоринг
+    её не видел вообще. Из-за этого офисные вакансии в неподходящих странах
+    (реальный случай 05.08.2026: Fireblocks «Technical Support Engineer, APAC»,
+    location=Singapore) не получали штрафа — в описании страна не упоминалась.
+    """
+    text = job.description
+    if job.location:
+        text = f"{text}\nLocation: {job.location}"
+    results = [score_vacancy(job.title, text, r) for r in CRITERIA["roles"]]
     best = max(results, key=lambda r: r["score"])
     return {"best": best, "all": results}
 

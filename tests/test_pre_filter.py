@@ -370,3 +370,43 @@ class TestForeignLangSection:
                 "base (Korean, Japanese, Bahasa). Knowledge of databases.")
         ok, reasons = passes_hard_gates("Technical Support Engineer", desc, "web3_support")
         assert ok is True, reasons
+
+
+class TestLocationField:
+    """Локация хранится отдельным полем Job.location, и score_job её не передавал
+    в скоринг. Реальный случай 05.08.2026: Fireblocks «Technical Support Engineer,
+    APAC», location=Singapore — в описании страна не упоминалась, штрафа за офис
+    в неподходящей стране не было."""
+
+    def _job(self, location, desc="Technical support for crypto custody platform. "
+                                  "Troubleshooting, API debugging, tickets."):
+        from src.models import Job
+        return Job(id="1", title="Technical Support Engineer", company="C",
+                   description=desc, url="u", source="s", location=location)
+
+    def test_foreign_office_location_penalized(self):
+        from src.matcher.pre_filter import score_job
+        sg = score_job(self._job("Singapore"))["best"]
+        assert "офис" in " ".join(sg["reasons"])
+
+    def test_relocation_country_not_penalized(self):
+        from src.matcher.pre_filter import score_job
+        cy = score_job(self._job("Limassol, Cyprus"))["best"]
+        assert "офис" not in " ".join(cy["reasons"])
+
+    def test_russian_location_not_penalized(self):
+        from src.matcher.pre_filter import score_job
+        ru = score_job(self._job("Москва"))["best"]
+        assert "офис" not in " ".join(ru["reasons"])
+
+    def test_remote_beats_location(self):
+        from src.matcher.pre_filter import score_job
+        r = score_job(self._job("Singapore", "Fully remote position. Technical support, "
+                                             "troubleshooting, API debugging for crypto wallets."))["best"]
+        assert "офис" not in " ".join(r["reasons"])
+
+    def test_foreign_location_scores_lower(self):
+        from src.matcher.pre_filter import score_job
+        sg = score_job(self._job("Singapore"))["best"]["score"]
+        cy = score_job(self._job("Limassol, Cyprus"))["best"]["score"]
+        assert sg < cy
