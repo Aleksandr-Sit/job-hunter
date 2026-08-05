@@ -151,12 +151,47 @@ _LANG_PLUS_PATTERN = re.compile(
 )
 
 
+# Заголовки разделов. Язык, упомянутый в разделе «желательно», НЕ является
+# требованием — окна ±60 символов для этого мало: заголовок раздела стоит выше,
+# через несколько пунктов списка. Реальный случай 05.08.2026: Fireblocks
+# «Technical Support Engineer, APAC» — Mandarin на позиции 2901, а заголовок
+# «Preferred qualifications» на 2639 (за 262 символа) → гейт считал язык
+# обязательным и резал подходящую вакансию.
+_OPTIONAL_SECTION = re.compile(
+    r'(preferred qualification|preferred skill|nice[\s-]to[\s-]have|'
+    r'bonus point|good to have|desirable|advantageous|will be a plus|'
+    r'будет плюсом|желательн|приветствуется|как преимущество)',
+    re.IGNORECASE,
+)
+_REQUIRED_SECTION = re.compile(
+    r'(requirements|required qualification|must have|minimum qualification|'
+    r'what you.{0,3}ll need|essential|обязательные требования|требования:)',
+    re.IGNORECASE,
+)
+
+
+def _in_optional_section(blob: str, pos: int) -> bool:
+    """True, если позиция находится в разделе «желательно», а не «требования».
+    Сравниваем, какой заголовок ближе слева."""
+    head = blob[:pos]
+    last_opt = max((m.start() for m in _OPTIONAL_SECTION.finditer(head)), default=-1)
+    last_req = max((m.start() for m in _REQUIRED_SECTION.finditer(head)), default=-1)
+    return last_opt > last_req
+
+
 def _foreign_lang_required(blob: str) -> bool:
-    """True, если иностранный язык требуется (а не «будет плюсом»)."""
+    """True, если иностранный язык требуется (а не «будет плюсом»).
+
+    Два уровня проверки: (1) пометка «плюс» рядом с самим языком;
+    (2) язык внутри раздела «Preferred/Nice to have» — тоже не требование.
+    """
     for m in _FOREIGN_LANG_PATTERN.finditer(blob):
         window = blob[max(0, m.start() - 60): m.end() + 60]
-        if not _LANG_PLUS_PATTERN.search(window):
-            return True  # хотя бы одно упоминание без пометки «плюс» — как требование
+        if _LANG_PLUS_PATTERN.search(window):
+            continue
+        if _in_optional_section(blob, m.start()):
+            continue
+        return True  # упоминание без пометки «плюс» и вне «желательного» раздела
     return False
 
 

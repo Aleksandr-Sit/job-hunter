@@ -322,3 +322,51 @@ class TestLongDescriptionTruncation:
                   url="u", source="s")
         assert "Короткое описание" in job.to_text()
         assert "пропущена середина" not in job.to_text()
+
+
+class TestForeignLangSection:
+    """Язык в разделе «Preferred qualifications» — НЕ требование.
+    Реальный случай 05.08.2026: Fireblocks «Technical Support Engineer, APAC» —
+    Mandarin на позиции 2901, заголовок «Preferred qualifications» на 2639
+    (за 262 символа, окно ±60 его не видело) → подходящая вакансия резалась."""
+
+    def test_language_in_preferred_section_not_required(self):
+        from src.matcher.pre_filter import _foreign_lang_required
+        t = ("requirements: 3+ years in technical support. "
+             "preferred qualifications: bs/ba degree. prior experience with saas. "
+             "mandarin or another language depending on your customer base "
+             "(korean, japanese, bahasa). knowledge of databases, kibana.")
+        assert _foreign_lang_required(t) is False
+
+    def test_language_in_requirements_section_is_required(self):
+        from src.matcher.pre_filter import _foreign_lang_required
+        t = ("preferred qualifications: bs degree. "
+             "requirements: fluency in both english and portuguese, written and verbal.")
+        assert _foreign_lang_required(t) is True
+
+    def test_plain_required_language_still_blocks(self):
+        from src.matcher.pre_filter import _foreign_lang_required
+        t = "languages: fluency in both english and portuguese is required (written and verbal)."
+        assert _foreign_lang_required(t) is True
+
+    def test_inline_plus_still_works(self):
+        from src.matcher.pre_filter import _foreign_lang_required
+        assert _foreign_lang_required("spanish is a plus for this role") is False
+
+    def test_russian_optional_marker(self):
+        from src.matcher.pre_filter import _foreign_lang_required
+        t = "требования: опыт поддержки. желательно: немецкий язык как преимущество."
+        assert _foreign_lang_required(t) is False
+
+    def test_fireblocks_vacancy_passes_gate(self):
+        """Итог: вакансия Fireblocks должна проходить гейт (язык лишь желателен)."""
+        from src.matcher.pre_filter import passes_hard_gates
+        desc = ("Technical Support Engineer for our crypto custody platform. "
+                "Requirements: 3+ years in technical support, troubleshooting, "
+                "customer facing experience. Remote. "
+                "Preferred qualifications: BS/BA degree in Computer Science. "
+                "Prior experience supporting SaaS-based products. "
+                "Mandarin or another language depending on your actual customer "
+                "base (Korean, Japanese, Bahasa). Knowledge of databases.")
+        ok, reasons = passes_hard_gates("Technical Support Engineer", desc, "web3_support")
+        assert ok is True, reasons
