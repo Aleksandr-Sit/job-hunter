@@ -454,3 +454,36 @@ class TestFluentEnglishGate:
             "crypto_ops")
         assert res["passed_gate"] is False
         assert "английск" in res["reasons"][0]
+
+
+class TestRussianDeskAbroad:
+    """Офис в стране вне списка релокации, НО требуется русский язык — такие
+    рассматриваем: компания нанимает русскоязычных и решает визу (решение
+    владельца 05.08.2026). Штраф мягче обычного офисного."""
+
+    DESC = ("Support crypto exchange users, wallets, transactions, tickets. "
+            "Requirements: {req} Office-based role.")
+
+    def _score(self, req, location):
+        from src.matcher.pre_filter import score_job
+        from src.models import Job
+        return score_job(Job(id="1", title="Customer Support Specialist", company="X",
+                             description=self.DESC.format(req=req),
+                             url="u", source="s", location=location))["best"]
+
+    def test_russian_required_abroad_scores_higher(self):
+        ru = self._score("Native Russian speaker required.", "Warsaw, Poland")
+        no_ru = self._score("Strong communication skills.", "Warsaw, Poland")
+        assert ru["score"] > no_ru["score"]
+
+    def test_russian_desk_reason_shown(self):
+        ru = self._score("Russian speaking team, CIS users.", "Warsaw, Poland")
+        assert "русскоязычн" in " ".join(ru["reasons"])
+
+    def test_plain_foreign_office_still_penalised_hard(self):
+        r = self._score("Strong communication skills.", "Singapore")
+        assert "только офис" in " ".join(r["reasons"])
+
+    def test_russian_desk_abroad_can_pass(self):
+        ru = self._score("Native Russian required for our CIS desk.", "Warsaw, Poland")
+        assert ru["recommend"] is True

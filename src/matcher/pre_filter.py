@@ -454,7 +454,15 @@ def score_vacancy(title: str, text: str, role_key: str) -> dict:
         score += _W["relocation"]; reasons.append("страна релокации подходит")
 
     if onsite and not remote and not reloc:
-        score += _W["onsite"]; reasons.append("только офис в неподходящей локации")
+        # Офис в стране вне списка релокации — но если вакансия требует РУССКИЙ
+        # язык, компания уже нанимает русскоязычных и обычно решает визу/переезд.
+        # Такие рассматриваем: штраф мягче, вакансия остаётся видимой (решение
+        # владельца 05.08.2026).
+        if _hits(CRITERIA["english_boost"], blob)[0]:
+            score += _W.get("onsite_ru_desk", -10)
+            reasons.append("офис за рубежом, но команда/клиенты русскоязычные")
+        else:
+            score += _W["onsite"]; reasons.append("только офис в неподходящей локации")
 
     ew = role["english_weight"]
     nep, fep = _hits(CRITERIA["english_penalty"], blob)
