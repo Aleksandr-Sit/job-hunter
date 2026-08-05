@@ -523,3 +523,41 @@ class TestAshbyWorkplaceType:
                            "platform. Handle client tickets, CRM, SLA, escalations. "
                            + job.description)
         assert "офис" in " ".join(score_job(job)["best"]["reasons"])
+
+
+class TestNormalizeModule:
+    """Общий модуль нормализации (src/parsers/normalize.py): правила формата и
+    обрезки живут в одном месте, чтобы правка не чинила один парсер и не
+    оставляла баг в остальных — так находились Bybit/Gemini/Elliptic."""
+
+    def test_workplace_type_is_authoritative(self):
+        from src.parsers.normalize import detect_remote
+        # Ashby: workplaceType=Hybrid при isRemote=true — верим полю формата
+        assert detect_remote(location="Hong Kong", workplace_type="Hybrid",
+                             explicit_flag=True) is False
+        assert detect_remote(location="Hong Kong", workplace_type="Remote") is True
+
+    def test_stray_remote_word_is_not_a_signal(self):
+        from src.parsers.normalize import detect_remote
+        assert detect_remote(location="New York",
+                             description="provide remote troubleshooting via slack") is False
+
+    def test_explicit_remote_phrase_counts(self):
+        from src.parsers.normalize import detect_remote
+        assert detect_remote(location="New York",
+                             description="This is a fully remote position.") is True
+
+    def test_remote_location_counts(self):
+        from src.parsers.normalize import detect_remote
+        assert detect_remote(location="Remote - EMEA") is True
+
+    def test_clean_description_limit(self):
+        from src.models import MAX_DESCRIPTION_CHARS
+        from src.parsers.normalize import clean_description
+        assert len(clean_description("x" * 99999)) == MAX_DESCRIPTION_CHARS
+        assert clean_description(None) == ""
+
+    def test_onsite_note_added_for_hybrid(self):
+        from src.parsers.normalize import onsite_note
+        assert "on-site presence required" in onsite_note("Hybrid")
+        assert onsite_note("Remote") == ""

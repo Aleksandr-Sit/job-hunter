@@ -11,8 +11,9 @@ import yaml
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from ...models import MAX_DESCRIPTION_CHARS, Job
+from ...models import Job
 from ..base import BaseParser
+from ..normalize import clean_description, detect_remote
 
 logger = logging.getLogger(__name__)
 
@@ -86,14 +87,14 @@ class LeverParser(BaseParser):
         description_parts = [text_block]
         for lst in lists:
             description_parts.append(lst.get("text", "") + "\n" + lst.get("content", ""))
-        description = "\n\n".join(p for p in description_parts if p).strip()
-        if len(description) > 2000:
-            description = description[:MAX_DESCRIPTION_CHARS]
+        description = clean_description(
+            "\n\n".join(p for p in description_parts if p).strip())
 
-        is_remote = any(
-            w in (location + commitment + description).lower()
-            for w in ["remote", "anywhere", "удалённо", "удаленно"]
-        )
+        # Единая логика формата — src/parsers/normalize.py. Одиночное «remote»
+        # в тексте сигналом не считается (встречается в «remote troubleshooting»,
+        # «flexibility of remote work» у офисных вакансий).
+        is_remote = detect_remote(location=f"{location} {commitment}",
+                                  description=description)
 
         return Job(
             id=f"lv_{item['id']}",

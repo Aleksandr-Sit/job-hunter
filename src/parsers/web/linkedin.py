@@ -16,6 +16,7 @@ import yaml
 
 from ...models import MAX_DESCRIPTION_CHARS, Job
 from ..base import BaseParser
+from ..normalize import detect_remote
 
 logger = logging.getLogger(__name__)
 
@@ -112,10 +113,8 @@ class LinkedInParser(BaseParser):
         except (ValueError, TypeError):
             pass
 
-        is_remote = any(
-            w in (location + description).lower()
-            for w in ["remote", "anywhere", "удалённо", "удаленно"]
-        )
+        # Единая логика формата — src/parsers/normalize.py
+        is_remote = detect_remote(location=location, description=description)
 
         # Стабильный ID из URL
         job_id = "li_" + hashlib.md5(url.encode()).hexdigest()[:12]

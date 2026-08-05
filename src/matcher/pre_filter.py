@@ -162,10 +162,19 @@ _EXPLICIT_REMOTE = re.compile(
 # и уходила кандидату). Цена гейта измерена: из 233 проходящих вакансий его
 # требуют 4 (2%), и ни одна из них не русскоязычная.
 _FLUENT_ENGLISH_REQUIRED = re.compile(
-    r'(fluent\s+(?:in\s+)?english|native\s+english|native[\s-]level\s+english|'
-    r'english\s+(?:at\s+)?(?:c1|c2)\b|\benglish\s+fluency|fluency\s+in\s+english|'
-    r'excellent\s+(?:written\s+and\s+spoken\s+)?english|'
-    r'свободный\s+английск|английский\s+c1|английский\s+c2|уровень\s+носителя)',
+    r'('
+    r'fluent\s+(?:in\s+)?english|native\s+english|native[\s-]level\s+english|'
+    r'english\s+(?:at\s+)?(?:c1|c2)\b|\benglish\s+(?:fluency|proficiency)|'
+    r'fluency\s+in\s+english|proficien\w*\s+in\s+english|'
+    # «Excellent COMMAND OF spoken and written English», «strong knowledge of
+    # business English» — между качеством и словом English бывает до 4 слов
+    # (найдено 06.08.2026 на вакансии OKX: шаблон без этого не срабатывал).
+    r'(?:excellent|strong|advanced|high|professional|full|solid|great)\s+'
+    r'(?:command|proficiency|knowledge|level|standard)\s+(?:of|in)\s+(?:\w+\s+){0,4}english|'
+    r'(?:excellent|strong|advanced|professional)\s+(?:\w+\s+){0,3}english\b|'
+    r'свободный\s+английск|английский\s+c1|английский\s+c2|уровень\s+носителя|'
+    r'свободное\s+владение\s+английск|отличное\s+владение\s+английск'
+    r')',
     re.IGNORECASE,
 )
 

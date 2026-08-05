@@ -173,6 +173,11 @@ def _fetch_channel(channel: str, timeout: int = 20) -> list[Job]:
         title = _pick_title(lines)
 
         sal_min, sal_max, currency = _extract_salary(text)
+        # ОСОЗНАННОЕ отличие от ATS-парсеров (src/parsers/normalize.py):
+        # здесь описание — это ВЕСЬ пост, короткий и написанный человеком.
+        # Корпоративного boilerplate вроде «remote troubleshooting» или
+        # «flexibility of remote work» в нём не бывает, поэтому упоминание
+        # «удалённо» — достоверный сигнал формата, а не ложное срабатывание.
         is_remote = any(
             w in text_lower
             for w in ["remote", "удалённо", "удаленно", "дистанционно", "🌍", "🌎"]

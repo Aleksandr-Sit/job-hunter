@@ -11,8 +11,9 @@ import yaml
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from ...models import MAX_DESCRIPTION_CHARS, Job
+from ...models import Job
 from ..base import BaseParser
+from ..normalize import clean_description, detect_remote, onsite_note
 
 logger = logging.getLogger(__name__)
 
@@ -79,26 +80,16 @@ class AshbyParser(BaseParser):
         except Exception:
             published_at = None
 
-        description = (item.get("descriptionPlain") or "")[:MAX_DESCRIPTION_CHARS]
+        description = clean_description(item.get("descriptionPlain"))
 
-        # `workplaceType` (Remote / Hybrid / OnSite) — единственное достоверное поле.
-        # `isRemote` у Ashby врёт: у Elliptic 26 из 28 вакансий имеют
-        # workplaceType=Hybrid И isRemote=true одновременно, из-за чего гибридная
-        # роль в Гонконге приходила помеченной «Remote» (найдено 05.08.2026).
-        wp = workplace.strip().lower()
-        if wp:
-            is_remote = wp == "remote"
-        else:
-            is_remote = (
-                item.get("isRemote", False)
-                or any(w in (location + description).lower()
-                       for w in ["remote", "anywhere", "удалённо", "удаленно"])
-            )
-
-        # Гибрид/офис — явный сигнал присутствия. Дописываем в описание, чтобы его
-        # видел скоринг: иначе про формат знает только поле, которое он не читает.
-        if wp in ("hybrid", "onsite", "on-site"):
-            description = f"{description}\nWork format: {workplace} (on-site presence required)"
+        # `workplaceType` (Remote / Hybrid / OnSite) — единственное достоверное поле:
+        # `isRemote` у Ashby врёт (у Elliptic 26 из 28 вакансий Hybrid + isRemote=true).
+        # Логика общая для всех парсеров — src/parsers/normalize.py.
+        is_remote = detect_remote(location=location, description=description,
+                                  workplace_type=workplace,
+                                  explicit_flag=item.get("isRemote"))
+        # Формат работы доносим ТЕКСТОМ: скоринг читает описание, а не поля источника.
+        description += onsite_note(workplace)
 
         return Job(
             id=f"ab_{item['id']}",

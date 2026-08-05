@@ -11,9 +11,9 @@ import yaml
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from ...matcher.pre_filter import _EXPLICIT_REMOTE
-from ...models import MAX_DESCRIPTION_CHARS, Job
+from ...models import Job
 from ..base import BaseParser
+from ..normalize import clean_description, detect_remote
 
 logger = logging.getLogger(__name__)
 
@@ -92,17 +92,13 @@ class GreenhouseParser(BaseParser):
             published_at = None
 
         # Content field contains job description HTML
-        content = (item.get("content", "") or "")[:MAX_DESCRIPTION_CHARS]
+        content = clean_description(item.get("content", ""))
 
         # Раньше is_remote ставился по слову «remote» ГДЕ УГОДНО в тексте — и
         # вакансия в офисе Нью-Йорка («flexibility of remote work» в блоке про
         # культуру компании) помечалась как удалённая. Теперь: либо локация прямо
         # говорит remote, либо в тексте есть явная формулировка формата.
-        loc_l = location.lower()
-        is_remote = (
-            any(w in loc_l for w in ("remote", "anywhere", "удалённо", "удаленно"))
-            or bool(_EXPLICIT_REMOTE.search(content))
-        )
+        is_remote = detect_remote(location=location, description=content)
 
         return Job(
             id=f"gh_{item['id']}",
