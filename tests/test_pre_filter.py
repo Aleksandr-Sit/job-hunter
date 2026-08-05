@@ -561,3 +561,71 @@ class TestNormalizeModule:
         from src.parsers.normalize import onsite_note
         assert "on-site presence required" in onsite_note("Hybrid")
         assert onsite_note("Remote") == ""
+
+
+class TestEnglishModality:
+    """Разговорный английский кандидату недоступен (A1–A2), письменный —
+    закрывается переводчиком/AI. Это разные барьеры (решение владельца 05.08.2026):
+    spoken/generic режем, written пропускаем со штрафом."""
+
+    @pytest.mark.parametrize("text", [
+        "Excellent command of spoken and written English is required.",
+        "Strong written and verbal English; a confident communicator.",
+        "Fluent English - daily calls with international partners.",
+        "Fluent English and participation in weekly meetings.",
+        # «verbally and in writing» (Binance): при `verbal` вместо `verbal\w*`
+        # это определялось как ПИСЬМЕННОЕ требование — найдено замером 05.08.2026
+        "Strong communication skills in English verbally and in writing.",
+    ])
+    def test_spoken_is_hard_gate(self, text):
+        from src.matcher.pre_filter import _english_modality, _fluent_english_required
+        assert _english_modality(text) == "spoken"
+        assert _fluent_english_required(text) is True
+
+    @pytest.mark.parametrize("text", [
+        "Must-haves: Strong written English - clear, concise, and empathetic.",
+        "Excellent written English for handling support tickets.",
+        "Требуется свободный английский язык в переписке.",
+    ])
+    def test_written_only_passes_with_penalty(self, text):
+        from src.matcher.pre_filter import _english_modality, _fluent_english_required
+        assert _english_modality(text) == "written"
+        assert _fluent_english_required(text) is False
+
+    @pytest.mark.parametrize("text", [
+        "Fluency in English required; Greek is a strong plus.",
+        "Fluent English is a must for this role.",
+    ])
+    def test_generic_is_hard_gate(self, text):
+        from src.matcher.pre_filter import _english_modality, _fluent_english_required
+        assert _english_modality(text) == "generic"
+        assert _fluent_english_required(text) is True
+
+    @pytest.mark.parametrize("text", [
+        "English is a plus.",
+        "Мы ищем специалиста поддержки для русскоязычных клиентов.",
+    ])
+    def test_no_requirement(self, text):
+        from src.matcher.pre_filter import _english_modality
+        assert _english_modality(text) is None
+
+    def test_modality_read_near_requirement_not_whole_vacancy(self):
+        """«Созвоны» в разделе про условия не делают письменное требование устным —
+        иначе почти любая вакансия схлопнется в spoken."""
+        from src.matcher.pre_filter import _english_modality
+        text = ("Requirements: strong written English for support tickets. "
+                + "Filler text about the product. " * 12
+                + "Benefits: team calls on Fridays, video meetings, offsites.")
+        assert _english_modality(text) == "written"
+
+    def test_written_only_is_penalised_not_zeroed(self):
+        from src.matcher.pre_filter import score_vacancy
+        res = score_vacancy(
+            "Crypto Operations Specialist",
+            "Fully remote. On-chain operations, transaction monitoring, CEX/DEX, "
+            "staking, custody. Strong written English for internal documentation.",
+            "crypto_ops",
+        )
+        assert res["passed_gate"] is True
+        assert res["score"] > 0
+        assert any("письменный английский" in r for r in res["reasons"])

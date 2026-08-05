@@ -179,15 +179,32 @@ _FLUENT_ENGLISH_REQUIRED = re.compile(
 )
 
 
-def _fluent_english_required(blob: str) -> bool:
-    """True, если требуется свободный английский — и это НЕ русскоязычная роль.
+# Модальность требования. Разговорный английский кандидату недоступен (A1–A2),
+# а письменный закрывается переводчиком/AI — это разные барьеры, и мешать их в один
+# гейт неверно (решение владельца 05.08.2026).
+_SPOKEN_MARKERS = re.compile(
+    # Суффиксы обязательны: «verbally and in writing» (Binance) при `verbal\b`
+    # определялось как ПИСЬМЕННОЕ требование — найдено замером 05.08.2026.
+    r'\b(spoken|verbal\w*|oral\w*|conversation\w*|speak\w*|phone|calls?|'
+    r'meetings?|video|negotiat\w*|presentation\w*|stand-?ups?)\b|'
+    r'устн\w*|разговорн\w*|переговор\w*|созвон\w*|звонк\w*',
+    re.IGNORECASE,
+)
+_WRITTEN_MARKERS = re.compile(
+    r'\b(written|writing|correspondence|documentation)\b|письмен\w*|переписк\w*',
+    re.IGNORECASE,
+)
 
-    Исключения: (1) пометка «плюс» рядом; (2) требование в разделе «желательно»;
-    (3) вакансия русскоязычная/CIS — там английский обычно вторичен, и решение
-    об отклике кандидат принимает сам.
+def _english_modality(blob: str) -> str | None:
+    """Насколько жёстко вакансия требует английский: spoken / generic / written / None.
+
+    Исключения (требования нет): (1) пометка «плюс» рядом; (2) требование в разделе
+    «желательно»; (3) вакансия русскоязычная/CIS — там английский обычно вторичен,
+    и решение об отклике кандидат принимает сам.
     """
     if _hits(CRITERIA["english_boost"], blob)[0]:
-        return False
+        return None
+    found: set[str] = set()
     for m in _FLUENT_ENGLISH_REQUIRED.finditer(blob):
         head = blob[max(0, m.start() - 60): m.start()]
         tail = blob[m.end(): m.end() + 60]
@@ -202,8 +219,24 @@ def _fluent_english_required(blob: str) -> bool:
             continue
         if _in_optional_section(blob, m.start()):
             continue
-        return True
-    return False
+        # Модальность ищем в окне вокруг самого требования, а не по всей вакансии:
+        # «созвоны с командой» в разделе про условия не делают английский устным.
+        window = blob[max(0, m.start() - 90): m.end() + 90]
+        if _SPOKEN_MARKERS.search(window):
+            found.add("spoken")
+        elif _WRITTEN_MARKERS.search(window):
+            found.add("written")
+        else:
+            found.add("generic")
+    for level in ("spoken", "generic", "written"):   # строгое побеждает
+        if level in found:
+            return level
+    return None
+
+
+def _fluent_english_required(blob: str) -> bool:
+    """True, если требование английского — жёсткий барьер (см. _ENGLISH_GATE_LEVELS)."""
+    return _english_modality(blob) in _ENGLISH_GATE_LEVELS
 
 
 # ── 4. Иностранные языки (кроме ru/en) ────────────────────────────────────────
@@ -292,6 +325,11 @@ CRITERIA = _load_criteria()
 AVOID_KW = _load_avoid_keywords()
 _W = CRITERIA["weights"]
 
+# Какие уровни требования английского считать жёстким барьером.
+# Строгость: spoken > generic > written. «written» по умолчанию НЕ режем —
+# он закрывается переводчиком/AI, вместо отсева мягкий штраф (см. criteria.yaml).
+_ENGLISH_GATE_LEVELS = set(CRITERIA.get("english_gate_levels", ["spoken", "generic"]))
+
 
 @lru_cache(maxsize=1)
 def _prefilter_version() -> str:
@@ -364,8 +402,10 @@ def _extra_hard_gates(title: str, text: str, role_key: str) -> str | None:
     if _citizenship_barrier(blob):
         return "требуется гражданство/право на работу в ЕС или США"
 
-    if _fluent_english_required(blob):
-        return "требуется свободный английский (у кандидата A1–A2)"
+    modality = _english_modality(blob)
+    if modality in _ENGLISH_GATE_LEVELS:
+        what = "разговорный" if modality == "spoken" else "свободный"
+        return f"требуется {what} английский (у кандидата A1–A2)"
 
     return None
 
@@ -481,6 +521,14 @@ def score_vacancy(title: str, text: str, role_key: str) -> dict:
     if _hits(CRITERIA["english_boost"], blob)[0]:
         add = int(_W["english_boost"] * ew)
         score += add; reasons.append(f"+{add} русскоязычная/CIS команда")
+
+    # Требуется только ПИСЬМЕННЫЙ английский — барьер преодолим переводчиком/AI,
+    # поэтому не режем, но помечаем и штрафуем: отклик всё равно потребует усилий,
+    # да и собеседование, скорее всего, будет голосовым.
+    if _english_modality(blob) == "written" and "written" not in _ENGLISH_GATE_LEVELS:
+        sub = int(_W.get("english_written_only", -8) * ew)
+        score += sub
+        reasons.append(f"{sub} нужен письменный английский (переводчик/AI — реально)")
 
     # Entry/junior/обучающие роли — целевой сегмент кандидата (низкий барьер)
     if _hits(CRITERIA.get("entry_boost", []), blob)[0]:
