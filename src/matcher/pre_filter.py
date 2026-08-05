@@ -144,6 +144,16 @@ _RU_LOCATION = re.compile(
     re.IGNORECASE,
 )
 
+# ЯВНОЕ заявление удалённого формата — в отличие от одиночного слова «remote»,
+# которое встречается в «remote troubleshooting», «remote access», «remote server».
+_EXPLICIT_REMOTE = re.compile(
+    r'(fully[\s-]remote|100%\s*remote|remote[\s-]first|work from anywhere|'
+    r'remote position|remote role|fully distributed|'
+    r'полностью удалённ|полностью удаленн|удалённая работа|удаленная работа|'
+    r'удалённый формат|удаленный формат)',
+    re.IGNORECASE,
+)
+
 # ── 4. Иностранные языки (кроме ru/en) ────────────────────────────────────────
 _FOREIGN_LANG_PATTERN = re.compile(
     r'\b(chinese|mandarin|deutsch|german|french|français|spanish|español|'
@@ -376,18 +386,26 @@ def score_vacancy(title: str, text: str, role_key: str) -> dict:
     reloc = _hits(CRITERIA["relocation_ok"], blob)[0]
     remote = _hits(CRITERIA["remote_boost"], blob)[0]
     onsite = _hits(CRITERIA["onsite_penalty"], blob)[0]
+    # Структурное поле локации ВАЖНЕЕ случайного «remote» в тексте описания —
+    # разбираем ДО начисления баллов. Fireblocks APAC (location=Singapore) получал
+    # +10 за remote, потому что в описании было «remote troubleshooting»: это
+    # техника поддержки, а не формат работы. Если локация явно называет город или
+    # страну вне РФ и вне списка релокации — это офис там, куда кандидат не поедет.
+    # Исключение: если в описании ЯВНО заявлен удалённый формат («fully remote»,
+    # «полностью удалённо»), локация — это скорее юрадрес/штаб-квартира, и она
+    # не должна перебивать формат. Одиночное слово «remote» таким сигналом не
+    # считается — оно встречается в «remote troubleshooting», «remote access».
+    loc_match = re.search(r"location:\s*([^\n]+)", blob)
+    if loc_match and not _EXPLICIT_REMOTE.search(blob):
+        loc_line = loc_match.group(1)
+        if not _RU_LOCATION.search(loc_line) and not _hits(CRITERIA["relocation_ok"], loc_line)[0]:
+            remote = False   # поле локации перевешивает «remote» из текста
+            onsite = True
+
     if remote:
         score += _W["remote"]; reasons.append("remote")
     if reloc:
         score += _W["relocation"]; reasons.append("страна релокации подходит")
-    # Явно указанная локация, которой нет ни в remote, ни в списке релокации, ни в
-    # РФ — это офис в стране, куда кандидат не поедет (нужна виза/переезд).
-    # Раньше такие вакансии штрафа не получали, если страна не упоминалась в тексте
-    # описания (Fireblocks APAC: location=Singapore, в описании страны нет).
-    if not remote and not reloc:
-        loc_match = re.search(r"location:\s*([^\n]+)", blob)
-        if loc_match and not _RU_LOCATION.search(loc_match.group(1)):
-            onsite = True
 
     if onsite and not remote and not reloc:
         score += _W["onsite"]; reasons.append("только офис в неподходящей локации")
