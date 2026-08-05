@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 import requests
 
-from ...models import Job
+from ...models import MAX_DESCRIPTION_CHARS, Job
 from ..base import BaseParser
 
 logger = logging.getLogger(__name__)
@@ -64,7 +64,7 @@ class RemoteOKParser(BaseParser):
             id=f"rok_{item['id']}",
             title=item.get("position", ""),
             company=item.get("company", ""),
-            description=item.get("description", "")[:3000],
+            description=item.get("description", "")[:MAX_DESCRIPTION_CHARS],
             url=item.get("url", ""),
             source="remoteok.com",
             salary_min=sal_min,

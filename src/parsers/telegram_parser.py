@@ -14,7 +14,7 @@ import requests
 import yaml
 from bs4 import BeautifulSoup
 
-from ..models import Job
+from ..models import MAX_DESCRIPTION_CHARS, Job
 from .base import BaseParser
 
 logger = logging.getLogger(__name__)
@@ -182,7 +182,7 @@ def _fetch_channel(channel: str, timeout: int = 20) -> list[Job]:
             id=f"tg_{uid}",
             title=title,
             company=f"@{channel}",
-            description=text[:2000],
+            description=text[:MAX_DESCRIPTION_CHARS],
             url=post_url,
             source=f"telegram:{channel}",
             salary_min=sal_min,

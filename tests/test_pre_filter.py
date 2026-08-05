@@ -281,3 +281,44 @@ class TestCitizenshipBarrier:
         )
         assert res["passed_gate"] is False
         assert res["recommend"] is False
+
+
+class TestLongDescriptionTruncation:
+    """Парсеры резали описание на 2000 символов, а требования в длинных
+    вакансиях стоят в конце. Реальный случай 05.08.2026: Bybit «[Fiat] Fiat
+    Operations Specialist - Brazil» — описание 10 941 символ, требование
+    «Fluency in English and Portuguese» на позиции 9 996 → гейт языков его
+    не видел, вакансия ушла кандидату."""
+
+    def test_limit_covers_long_vacancies(self):
+        from src.models import MAX_DESCRIPTION_CHARS
+        assert MAX_DESCRIPTION_CHARS >= 11000  # реальный кейс был 10 941
+
+    def test_foreign_language_at_end_is_caught(self):
+        from src.matcher.pre_filter import score_vacancy
+        long_intro = "About Bybit. We are a leading crypto exchange. " * 200
+        desc = long_intro + (
+            "Languages: Fluency in both English and Portuguese is required "
+            "(written and verbal). Additional languages are a plus."
+        )
+        assert len(desc) > 9000
+        res = score_vacancy("Fiat Operations Specialist - Brazil", desc, "crypto_ops")
+        assert res["passed_gate"] is False
+        assert "язык" in res["reasons"][0]
+
+    def test_ai_sample_includes_tail(self):
+        """В промпт AI должен попадать и конец описания (там требования)."""
+        from src.models import Job
+        job = Job(id="1", title="T", company="C",
+                  description="НАЧАЛО " * 200 + "ТРЕБОВАНИЯ_В_КОНЦЕ",
+                  url="u", source="s")
+        text = job.to_text()
+        assert "ТРЕБОВАНИЯ_В_КОНЦЕ" in text
+        assert "НАЧАЛО" in text
+
+    def test_short_description_not_mangled(self):
+        from src.models import Job
+        job = Job(id="1", title="T", company="C", description="Короткое описание",
+                  url="u", source="s")
+        assert "Короткое описание" in job.to_text()
+        assert "пропущена середина" not in job.to_text()

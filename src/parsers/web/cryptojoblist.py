@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 import requests
 from bs4 import BeautifulSoup
 
-from ...models import Job
+from ...models import MAX_DESCRIPTION_CHARS, Job
 from ..base import BaseParser
 
 logger = logging.getLogger(__name__)
@@ -94,7 +94,7 @@ class CryptoJobListParser(BaseParser):
             id=f"cjl_{item.get('id', slug[:20])}",
             title=item.get("jobTitle", ""),
             company=item.get("companyName", ""),
-            description=desc[:3000],
+            description=desc[:MAX_DESCRIPTION_CHARS],
             url=url,
             source="cryptojobslist.com",
             salary_min=sal_min,

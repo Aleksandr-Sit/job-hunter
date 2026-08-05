@@ -11,7 +11,7 @@ import yaml
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from ...models import Job
+from ...models import MAX_DESCRIPTION_CHARS, Job
 from ..base import BaseParser
 
 logger = logging.getLogger(__name__)
@@ -85,7 +85,7 @@ class GreenhouseParser(BaseParser):
         # Content field contains job description HTML
         content = item.get("content", "") or ""
         if len(content) > 2000:
-            content = content[:2000]
+            content = content[:MAX_DESCRIPTION_CHARS]
 
         is_remote = any(
             w in (location + content).lower()

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import yaml
 
-from ...models import Job
+from ...models import MAX_DESCRIPTION_CHARS, Job
 from ..base import BaseParser
 
 logger = logging.getLogger(__name__)
@@ -94,7 +94,7 @@ class LinkedInParser(BaseParser):
         company = _str(row.get("company"))
         url = _str(row.get("job_url"))
         location = _str(row.get("location"))
-        description = _str(row.get("description"))[:3000]
+        description = _str(row.get("description"))[:MAX_DESCRIPTION_CHARS]
 
         # Зарплата
         sal_min = sal_max = None

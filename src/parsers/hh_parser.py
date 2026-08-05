@@ -13,7 +13,7 @@ import requests
 import yaml
 from bs4 import BeautifulSoup
 
-from ..models import Job
+from ..models import MAX_DESCRIPTION_CHARS, Job
 from .base import BaseParser
 
 logger = logging.getLogger(__name__)
@@ -136,7 +136,7 @@ class HHParser(BaseParser):
             id=f"hh_{vacancy_id}",
             title=title,
             company=company,
-            description=desc_text[:2000],
+            description=desc_text[:MAX_DESCRIPTION_CHARS],
             url=link,
             source="hh.ru",
             salary_min=salary_min,

@@ -11,7 +11,7 @@ import yaml
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from ...models import Job
+from ...models import MAX_DESCRIPTION_CHARS, Job
 from ..base import BaseParser
 
 logger = logging.getLogger(__name__)
@@ -88,7 +88,7 @@ class LeverParser(BaseParser):
             description_parts.append(lst.get("text", "") + "\n" + lst.get("content", ""))
         description = "\n\n".join(p for p in description_parts if p).strip()
         if len(description) > 2000:
-            description = description[:2000]
+            description = description[:MAX_DESCRIPTION_CHARS]
 
         is_remote = any(
             w in (location + commitment + description).lower()
