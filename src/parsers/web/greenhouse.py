@@ -11,6 +11,7 @@ import yaml
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+from ...matcher.pre_filter import _EXPLICIT_REMOTE
 from ...models import MAX_DESCRIPTION_CHARS, Job
 from ..base import BaseParser
 
@@ -69,12 +70,20 @@ class GreenhouseParser(BaseParser):
         return jobs
 
     def _parse_item(self, item: dict, company_name: str) -> Job:
+        # `location` — фактическое место работы («New York, New York»).
+        # `offices` — организационная единица и часто НЕ локация: у Gemini там
+        # «Gemini North America». Раньше offices читался первым, и в карточке
+        # вместо города показывался регион (найдено 05.08.2026).
         location = ""
-        locs = item.get("offices") or item.get("location") or []
-        if isinstance(locs, list) and locs:
-            location = locs[0].get("name", "")
-        elif isinstance(locs, dict):
-            location = locs.get("name", "")
+        loc = item.get("location")
+        if isinstance(loc, dict):
+            location = loc.get("name", "") or ""
+        if not location:
+            offices = item.get("offices") or []
+            if isinstance(offices, list) and offices:
+                location = offices[0].get("name", "") or ""
+            elif isinstance(offices, dict):
+                location = offices.get("name", "") or ""
 
         updated_at = item.get("updated_at") or item.get("created_at") or ""
         try:
@@ -83,13 +92,16 @@ class GreenhouseParser(BaseParser):
             published_at = None
 
         # Content field contains job description HTML
-        content = item.get("content", "") or ""
-        if len(content) > 2000:
-            content = content[:MAX_DESCRIPTION_CHARS]
+        content = (item.get("content", "") or "")[:MAX_DESCRIPTION_CHARS]
 
-        is_remote = any(
-            w in (location + content).lower()
-            for w in ["remote", "anywhere", "удалённо", "удаленно"]
+        # Раньше is_remote ставился по слову «remote» ГДЕ УГОДНО в тексте — и
+        # вакансия в офисе Нью-Йорка («flexibility of remote work» в блоке про
+        # культуру компании) помечалась как удалённая. Теперь: либо локация прямо
+        # говорит remote, либо в тексте есть явная формулировка формата.
+        loc_l = location.lower()
+        is_remote = (
+            any(w in loc_l for w in ("remote", "anywhere", "удалённо", "удаленно"))
+            or bool(_EXPLICIT_REMOTE.search(content))
         )
 
         return Job(
