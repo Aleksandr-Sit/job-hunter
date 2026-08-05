@@ -410,3 +410,47 @@ class TestLocationField:
         sg = score_job(self._job("Singapore"))["best"]["score"]
         cy = score_job(self._job("Limassol, Cyprus"))["best"]["score"]
         assert sg < cy
+
+
+class TestFluentEnglishGate:
+    """«Fluent English» — недостижимый барьер при A1–A2, как паспорт ЕС.
+    Раньше был мягкий штраф −14, который перебивался сильным заголовком
+    (замер 05.08.2026: удалённая крипто-вакансия с fluent English = 64 балла).
+    Цена гейта измерена: 4 из 233 проходящих вакансий (2%), из них 0 русскоязычных."""
+
+    @pytest.mark.parametrize("text", [
+        "requirements: fluent in english; mandarin proficiency is a plus",
+        "native english speaker required",
+        "excellent written and spoken english",
+        "english c1 required for this role",
+        "требования: свободный английский",
+    ])
+    def test_gated(self, text):
+        from src.matcher.pre_filter import _fluent_english_required
+        assert _fluent_english_required(text) is True
+
+    @pytest.mark.parametrize("text", [
+        "english is a plus for this role",
+        "preferred qualifications: fluent in english would be great",
+        "basic english is enough, we work in russian",
+    ])
+    def test_not_gated(self, text):
+        from src.matcher.pre_filter import _fluent_english_required
+        assert _fluent_english_required(text) is False
+
+    def test_russian_desk_not_gated(self):
+        """RU-desk: английский вторичен, решение об отклике — за кандидатом."""
+        from src.matcher.pre_filter import _fluent_english_required
+        t = ("russian speaking support specialist for our cis users. "
+             "fluent in english and russian required.")
+        assert _fluent_english_required(t) is False
+
+    def test_remote_crypto_vacancy_now_blocked(self):
+        from src.matcher.pre_filter import score_vacancy
+        res = score_vacancy(
+            "Custody Operations Specialist",
+            "Manage crypto custody operations, wallets, settlement for our exchange. "
+            "Fully remote. Requirements: Fluent in English; Mandarin is a plus.",
+            "crypto_ops")
+        assert res["passed_gate"] is False
+        assert "английск" in res["reasons"][0]

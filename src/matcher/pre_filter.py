@@ -154,6 +154,49 @@ _EXPLICIT_REMOTE = re.compile(
     re.IGNORECASE,
 )
 
+# ── 3c. Требование СВОБОДНОГО английского ─────────────────────────────────────
+# У кандидата A1–A2. «Fluent/native English» в требованиях — такой же
+# недостижимый барьер, как паспорт ЕС: резюме и сопроводительное его не решают.
+# Раньше это был лишь мягкий штраф −14, который перебивался сильным заголовком
+# (замер 05.08.2026: удалённая крипто-вакансия с «Fluent in English» = 64 балла
+# и уходила кандидату). Цена гейта измерена: из 233 проходящих вакансий его
+# требуют 4 (2%), и ни одна из них не русскоязычная.
+_FLUENT_ENGLISH_REQUIRED = re.compile(
+    r'(fluent\s+(?:in\s+)?english|native\s+english|native[\s-]level\s+english|'
+    r'english\s+(?:at\s+)?(?:c1|c2)\b|\benglish\s+fluency|fluency\s+in\s+english|'
+    r'excellent\s+(?:written\s+and\s+spoken\s+)?english|'
+    r'свободный\s+английск|английский\s+c1|английский\s+c2|уровень\s+носителя)',
+    re.IGNORECASE,
+)
+
+
+def _fluent_english_required(blob: str) -> bool:
+    """True, если требуется свободный английский — и это НЕ русскоязычная роль.
+
+    Исключения: (1) пометка «плюс» рядом; (2) требование в разделе «желательно»;
+    (3) вакансия русскоязычная/CIS — там английский обычно вторичен, и решение
+    об отклике кандидат принимает сам.
+    """
+    if _hits(CRITERIA["english_boost"], blob)[0]:
+        return False
+    for m in _FLUENT_ENGLISH_REQUIRED.finditer(blob):
+        head = blob[max(0, m.start() - 60): m.start()]
+        tail = blob[m.end(): m.end() + 60]
+        plus = _LANG_PLUS_PATTERN.search(tail)
+        if plus:
+            # «Fluent in English; Mandarin proficiency IS A PLUS» — здесь «плюс»
+            # относится к китайскому, а не к английскому. Если между английским
+            # и пометкой упомянут другой язык — пометка не про английский.
+            if not _FOREIGN_LANG_PATTERN.search(tail[:plus.start()]):
+                continue
+        elif _LANG_PLUS_PATTERN.search(head):
+            continue
+        if _in_optional_section(blob, m.start()):
+            continue
+        return True
+    return False
+
+
 # ── 4. Иностранные языки (кроме ru/en) ────────────────────────────────────────
 _FOREIGN_LANG_PATTERN = re.compile(
     r'\b(chinese|mandarin|deutsch|german|french|français|spanish|español|'
@@ -311,6 +354,9 @@ def _extra_hard_gates(title: str, text: str, role_key: str) -> str | None:
 
     if _citizenship_barrier(blob):
         return "требуется гражданство/право на работу в ЕС или США"
+
+    if _fluent_english_required(blob):
+        return "требуется свободный английский (у кандидата A1–A2)"
 
     return None
 
