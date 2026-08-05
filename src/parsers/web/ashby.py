@@ -79,15 +79,26 @@ class AshbyParser(BaseParser):
         except Exception:
             published_at = None
 
-        description = item.get("descriptionPlain") or ""
-        if len(description) > 2000:
-            description = description[:MAX_DESCRIPTION_CHARS]
+        description = (item.get("descriptionPlain") or "")[:MAX_DESCRIPTION_CHARS]
 
-        is_remote = (
-            item.get("isRemote", False)
-            or workplace.lower() == "remote"
-            or any(w in (location + description).lower() for w in ["remote", "anywhere", "удалённо", "удаленно"])
-        )
+        # `workplaceType` (Remote / Hybrid / OnSite) — единственное достоверное поле.
+        # `isRemote` у Ashby врёт: у Elliptic 26 из 28 вакансий имеют
+        # workplaceType=Hybrid И isRemote=true одновременно, из-за чего гибридная
+        # роль в Гонконге приходила помеченной «Remote» (найдено 05.08.2026).
+        wp = workplace.strip().lower()
+        if wp:
+            is_remote = wp == "remote"
+        else:
+            is_remote = (
+                item.get("isRemote", False)
+                or any(w in (location + description).lower()
+                       for w in ["remote", "anywhere", "удалённо", "удаленно"])
+            )
+
+        # Гибрид/офис — явный сигнал присутствия. Дописываем в описание, чтобы его
+        # видел скоринг: иначе про формат знает только поле, которое он не читает.
+        if wp in ("hybrid", "onsite", "on-site"):
+            description = f"{description}\nWork format: {workplace} (on-site presence required)"
 
         return Job(
             id=f"ab_{item['id']}",

@@ -487,3 +487,39 @@ class TestRussianDeskAbroad:
     def test_russian_desk_abroad_can_pass(self):
         ru = self._score("Native Russian required for our CIS desk.", "Warsaw, Poland")
         assert ru["recommend"] is True
+
+
+class TestAshbyWorkplaceType:
+    """Ashby: поле isRemote недостоверно — у Elliptic 26 из 28 вакансий имеют
+    workplaceType=Hybrid И isRemote=true. Гибридная роль в Гонконге приходила
+    помеченной «Remote» (найдено 05.08.2026). Достоверен workplaceType."""
+
+    def _parse(self, workplace, is_remote_flag, location="Hong Kong"):
+        from src.parsers.web.ashby import AshbyParser
+        item = {"id": "x", "title": "Solutions Consultant", "location": location,
+                "workplaceType": workplace, "isRemote": is_remote_flag,
+                "descriptionPlain": "Support enterprise clients with crypto compliance tools.",
+                "jobUrl": "u", "publishedAt": "2026-08-01T00:00:00Z"}
+        return AshbyParser._parse_item(AshbyParser.__new__(AshbyParser), item, "Elliptic")
+
+    def test_hybrid_not_marked_remote(self):
+        assert self._parse("Hybrid", True).is_remote is False
+
+    def test_remote_type_marked_remote(self):
+        assert self._parse("Remote", False).is_remote is True
+
+    def test_hybrid_adds_onsite_signal_to_text(self):
+        job = self._parse("Hybrid", True)
+        assert "on-site presence required" in job.description
+
+    def test_missing_workplace_falls_back(self):
+        assert self._parse("", True).is_remote is True
+
+    def test_hybrid_abroad_is_penalised(self):
+        """Гибрид за рубежом должен получать офисный штраф (роль/домен проходят)."""
+        from src.matcher.pre_filter import score_job
+        job = self._parse("Hybrid", True, location="Hong Kong")
+        job.description = ("Customer support specialist for our crypto compliance "
+                           "platform. Handle client tickets, CRM, SLA, escalations. "
+                           + job.description)
+        assert "офис" in " ".join(score_job(job)["best"]["reasons"])
