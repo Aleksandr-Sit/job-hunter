@@ -165,35 +165,40 @@ parsers:
       - { slug: "merklescience",   name: "Merkle Science" } # blockchain intelligence, CSM
 
   linkedin:
-    enabled: false       # LinkedIn стабильно отдаёт HTTP 429 (rate limit) на
-                         # публичный скрейп → 0 вакансий. Отключён, чтобы не
-                         # занимать слот парсинга. Вернуть в true, если появится
-                         # рабочий доступ (прокси/API).
-    hours_old: 72        # вакансии не старше 3 дней
-    results_per_query: 30
+    # Переписан 06.08.2026 на публичный guest-эндпоинт с geoId (JobSpy непригоден
+    # для стран релокации: падает на Казахстане/Сербии/Армении, "Georgia" читает
+    # как штат США). Прежняя причина отключения — HTTP 429 — на замере 06.08.2026
+    # не воспроизвелась: 598 вакансий собрано без единого 429.
+    enabled: true
+    hours_old: 168          # вакансии не старше недели
+    pages_per_query: 3      # до 30 карточек на запрос+страну
+    max_descriptions: 400   # потолок запросов за описаниями (главный расход времени)
+    delay_seconds: 0.7      # пауза между запросами, чтобы не ловить 429
+
+    # Замер 06.08.2026: NOT ухудшает выдачу и на LinkedIn (как и на HH) — на Кипре
+    # с NOT пропали «Customer Support Specialist» и «KYC & Client Onboarding
+    # Analyst», но остался мусорный «Chief Growth Officer». Поэтому NOT здесь нет.
     queries:
-      - "crypto operations"
-      - "web3 operations"
-      - "DeFi operations"
-      - "blockchain operations"
-      - "digital asset operations"
-      - "crypto community manager"
-      - "web3 analyst"
-      # Entry/junior — целевой сегмент
-      - "junior crypto operations"
-      - "operations associate crypto"
-      - "crypto support junior"
-      - "graduate program crypto"
-      # CIS / Russian-speaking роли
-      - "CIS community manager crypto"
-      - "Russian speaking crypto operations"
-      - "CIS growth manager web3"
-      - "Russian community web3"
-      # AI automation (любая индустрия)
-      - "AI automation specialist"
-      - "automation engineer"
-      - "no-code developer"
-      - "n8n developer"
+      - '("customer support" OR "customer success" OR "technical support" OR "support specialist" OR "operations specialist" OR "crypto operations" OR "community manager" OR AML OR KYC OR "compliance analyst" OR "QA tester") AND (crypto OR web3 OR blockchain OR fintech)'
+      - '("Russian speaking" OR "Russian language" OR "Russian speaker" OR "fluent Russian")'
+
+    # geoId проверены запросом: по каждому прочитаны локации вернувшихся вакансий.
+    # ⚠️ Не брать geoId «на глаз»: у Армении ходил 102324862 (отдавал КАНАДУ),
+    # у Черногории 104111274 (отдавал БРИТАНИЮ).
+    geos:
+      - { name: "Кипр",       id: "106774002" }
+      - { name: "ОАЭ",        id: "104305776" }
+      - { name: "Греция",     id: "104677530" }
+      - { name: "Сербия",     id: "101855366" }
+      - { name: "Турция",     id: "102105699" }
+      - { name: "Таиланд",    id: "105146118" }
+      - { name: "Армения",    id: "103030111" }
+      - { name: "Грузия",     id: "106315325" }
+      - { name: "Казахстан",  id: "106049128" }
+      - { name: "Вьетнам",    id: "104195383" }
+      - { name: "Индонезия",  id: "102478259" }
+      # Черногория (100733275) не включена: замер 06.08.2026 — почти пусто по всем
+      # направлениям (0-10 вакансий), тратить на неё проход смысла нет.
 
   habr:
     enabled: true        # Habr Career — серверный HTML .vacancy-card, РФ-крипто/финтех

@@ -629,3 +629,84 @@ class TestEnglishModality:
         assert res["passed_gate"] is True
         assert res["score"] > 0
         assert any("письменный английский" in r for r in res["reasons"])
+
+
+class TestForeignLanguagesOfRelocationCountries:
+    """Замер 06.08.2026: поиск по странам релокации тащил вакансии с обязательным
+    местным языком — греческого и вьетнамского не было в списке языков."""
+
+    @pytest.mark.parametrize("text", [
+        "Fluent Greek language is required.",
+        "Native Greek speaker required.",
+        "Fluent Vietnamese required.",
+        "Serbian language is required for this role.",
+        "Fluent Thai required.",
+        "Kazakh language required.",
+        "Fluency in Indonesian (Bahasa) is required.",
+        "Armenian language is required.",
+        "Fluent Danish required for this advisor role.",
+        "Swedish language is required.",
+    ])
+    def test_local_language_is_a_barrier(self, text):
+        from src.matcher.pre_filter import _foreign_lang_required
+        assert _foreign_lang_required(text) is True
+
+    @pytest.mark.parametrize("text", [
+        "Greek is a plus.",
+        "Vietnamese would be a plus.",
+        "Nice to have: Serbian language skills.",
+        # «polish» намеренно не в списке языков — в английском это ещё и глагол
+        "We will help you polish your communication skills.",
+    ])
+    def test_local_language_as_plus_is_not_a_barrier(self, text):
+        from src.matcher.pre_filter import _foreign_lang_required
+        assert _foreign_lang_required(text) is False
+
+
+class TestLinkedInParserParsing:
+    """Парсер переписан на guest-эндпоинт (JobSpy падал на Казахстане/Сербии/
+    Армении и путал Грузию со штатом США). Разбор карточки — на реальном фрагменте."""
+
+    def _parser(self):
+        from src.parsers.web.linkedin import LinkedInParser
+        return LinkedInParser.__new__(LinkedInParser)
+
+    HTML = (
+        '<ul><li>'
+        '<a class="base-card__full-link" href="https://cy.linkedin.com/jobs/view/'
+        'kyc-client-onboarding-analyst-at-emoni-4442733327?position=1">'
+        '<h3 class="base-search-card__title"> KYC &amp; Client Onboarding Analyst </h3>'
+        '<h4 class="base-search-card__subtitle"><a href="#">emoni</a></h4>'
+        '<span class="job-search-card__location"> Limassol, Cyprus </span></a>'
+        '</li></ul>'
+    )
+
+    def test_card_fields_parsed(self, monkeypatch):
+        p = self._parser()
+        p.hours_old = 168
+        monkeypatch.setattr(p, "_get", lambda url: self.HTML)
+        cards = p._cards("query", "106774002", 0)
+        assert len(cards) == 1
+        c = cards[0]
+        assert c["id"] == "4442733327"          # id из хвоста URL, не из ?position
+        assert c["title"] == "KYC &amp; Client Onboarding Analyst"
+        assert c["company"] == "emoni"
+        assert c["location"] == "Limassol, Cyprus"
+
+    def test_empty_response_does_not_crash(self, monkeypatch):
+        p = self._parser()
+        p.hours_old = 168
+        monkeypatch.setattr(p, "_get", lambda url: "")
+        assert p._cards("q", "1", 0) == []
+
+    def test_disabled_parser_returns_nothing(self):
+        p = self._parser()
+        p.enabled = False
+        assert p.parse() == []
+
+    def test_gives_up_after_repeated_429(self):
+        """Сеть не должна ронять пайплайн: после серии 429 парсер сдаётся."""
+        from src.parsers.web.linkedin import _MAX_429
+        p = self._parser()
+        p._strikes = _MAX_429
+        assert p._blocked() is True

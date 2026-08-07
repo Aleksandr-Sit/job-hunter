@@ -241,10 +241,20 @@ def _fluent_english_required(blob: str) -> bool:
 
 # ── 4. Иностранные языки (кроме ru/en) ────────────────────────────────────────
 _FOREIGN_LANG_PATTERN = re.compile(
-    r'\b(chinese|mandarin|deutsch|german|french|français|spanish|español|'
+    r'\b(chinese|mandarin|cantonese|deutsch|german|french|français|spanish|español|'
     r'japanese|korean|portuguese|arabic|hindi|italian|dutch|turkish|'
+    # Языки стран релокации: без них поиск по Греции/Вьетнаму/Сербии тащит
+    # вакансии с обязательным местным языком (замер 06.08.2026 — «Fluent Greek
+    # language is required» и «Fluent Vietnamese required» проходили гейт).
+    r'greek|vietnamese|serbian|croatian|indonesian|bahasa|thai|kazakh|'
+    r'georgian|armenian|uzbek|azerbaijani|hebrew|romanian|bulgarian|'
+    # Скандинавские: замер 06.08.2026 пропустил «Danish FinTech Advisor».
+    # «polish» намеренно НЕ добавлен — в английском это ещё и «шлифовать»
+    # («polish your skills»), ловил бы ложно.
+    r'danish|swedish|norwegian|finnish|czech|hungarian|'
     r'польский|немецкий|французский|испанский|китайский|японский|'
-    r'корейский|арабский|итальянский|турецкий)\b',
+    r'корейский|арабский|итальянский|турецкий|греческий|вьетнамский|'
+    r'сербский|индонезийский|тайский|казахский|грузинский|армянский|узбекский)\b',
     re.IGNORECASE,
 )
 
