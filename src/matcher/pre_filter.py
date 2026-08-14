@@ -230,6 +230,12 @@ _EN_AND_RU = re.compile(
     re.IGNORECASE,
 )
 
+# Уровень назван числом: B1/B2 — это «дотягиваемо и стоит посмотреть», в отличие
+# от размытого «fluent». C1/C2 остаются жёстким барьером (решение владельца
+# 14.08.2026: «переведи B1-B2 в штраф, интересно посмотреть, какие приходят с
+# очень высокой оценкой»).
+_CEFR_B_LEVEL = re.compile(r'\bb[12]\+?\b', re.IGNORECASE)
+
 _WRITTEN_MARKERS = re.compile(
     r'\b(written|writing|correspondence|documentation)\b|письмен\w*|переписк\w*',
     re.IGNORECASE,
@@ -288,13 +294,18 @@ def _english_modality(blob: str) -> str | None:
         # Модальность ищем в окне вокруг самого требования, а не по всей вакансии:
         # «созвоны с командой» в разделе про условия не делают английский устным.
         window = blob[max(0, m.start() - 90): m.end() + 90]
-        if _SPOKEN_MARKERS.search(window):
+        if _CEFR_B_LEVEL.search(m.group(0)):
+            # Работодатель назвал уровень числом — верим ему, а не окружающим
+            # словам. Если в вакансии есть ОТДЕЛЬНОЕ требование устного
+            # английского, оно даст свой матч и победит по строгости ниже.
+            found.add("level_b")
+        elif _SPOKEN_MARKERS.search(window):
             found.add("spoken")
         elif _WRITTEN_MARKERS.search(window):
             found.add("written")
         else:
             found.add("generic")
-    for level in ("spoken", "generic", "written"):   # строгое побеждает
+    for level in ("spoken", "generic", "level_b", "written"):   # строгое побеждает
         if level in found:
             return level
     return None
@@ -640,10 +651,15 @@ def score_vacancy(title: str, text: str, role_key: str) -> dict:
     # Требуется только ПИСЬМЕННЫЙ английский — барьер преодолим переводчиком/AI,
     # поэтому не режем, но помечаем и штрафуем: отклик всё равно потребует усилий,
     # да и собеседование, скорее всего, будет голосовым.
-    if _english_modality(blob) == "written" and "written" not in _ENGLISH_GATE_LEVELS:
+    _mod = _english_modality(blob)
+    if _mod == "written" and "written" not in _ENGLISH_GATE_LEVELS:
         sub = int(_W.get("english_written_only", -8) * ew)
         score += sub
         reasons.append(f"{sub} нужен письменный английский (переводчик/AI — реально)")
+    elif _mod == "level_b" and "level_b" not in _ENGLISH_GATE_LEVELS:
+        sub = int(_W.get("english_level_b", -6) * ew)
+        score += sub
+        reasons.append(f"{sub} требуется английский B1–B2 (у кандидата A1–A2)")
 
     # Entry/junior/обучающие роли — целевой сегмент кандидата (низкий барьер)
     if _hits(CRITERIA.get("entry_boost", []), blob)[0]:

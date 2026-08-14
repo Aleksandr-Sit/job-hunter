@@ -724,9 +724,6 @@ class TestEnglishGateBatch14Aug:
     @pytest.mark.parametrize("text", [
         # между «fluency in» и English перечислены другие языки
         "Fluency in both Russian and English is mandatory.",
-        # уровень CEFR: A1-A2 у кандидата, барьер начинается с B1
-        "English B1+ (correspondence, calls, reading contracts).",
-        "Candidates need English at level B2.",
         # язык перечислен в скобках, предлога «in English» нет
         "Good communication skills (both verbal and written, Russian and English).",
     ])
@@ -785,3 +782,63 @@ class TestUnreadableScript:
         from src.matcher.pre_filter import _unreadable_script
         t = "🚀 Remote crypto support role, tickets and KYC. 🌍 Apply now! " * 12
         assert _unreadable_script(t) is False
+
+
+class TestCefrBLevel:
+    """B1/B2 — не отсев, а штраф (решение владельца 14.08.2026: «интересно
+    посмотреть, какие приходят с очень высокой оценкой»). Работодатель назвал
+    уровень числом — это точнее размытого «fluent», и разрыв дотягиваем.
+    C1/C2 остаются жёстким барьером."""
+
+    @pytest.mark.parametrize("text", [
+        "English B1+ (correspondence, calls, reading contracts).",
+        "Candidates need English at level B2.",
+        "Fluent Russian and English level B2 or higher.",
+    ])
+    def test_b_level_is_penalty_not_cut(self, text):
+        from src.matcher.pre_filter import _english_modality, _fluent_english_required
+        assert _english_modality(text) == "level_b"
+        assert _fluent_english_required(text) is False
+
+    @pytest.mark.parametrize("text", [
+        "English at C1 level or above.",
+        "English C2 required.",
+    ])
+    def test_c_level_still_hard_cut(self, text):
+        from src.matcher.pre_filter import _fluent_english_required
+        assert _fluent_english_required(text) is True
+
+    def test_separate_spoken_requirement_still_wins(self):
+        """Если рядом есть ОТДЕЛЬНОЕ требование устного английского — режем."""
+        from src.matcher.pre_filter import _english_modality
+        t = ("English level B2 or higher. Excellent verbal communication skills "
+             "in English are essential.")
+        assert _english_modality(t) == "spoken"
+
+    def test_high_score_vacancy_survives_the_penalty(self):
+        """Смысл правки: сильная вакансия доходит, но со штрафом в причинах.
+
+        NB: без RU-desk в тексте — «russian speaking team» включает отдельное
+        исключение, при котором английский не штрафуется вовсе."""
+        from src.matcher.pre_filter import score_vacancy
+        res = score_vacancy(
+            "Technical Support Specialist",
+            "Fully remote. Support for crypto exchange users: tickets, SLA, KYC, "
+            "wallets, transactions, escalations, Zendesk, Jira. "
+            "English level B2 or higher.",
+            "web3_support",
+        )
+        assert res["recommend"] is True
+        assert any("B1" in r and "B2" in r for r in res["reasons"])
+
+    def test_ru_desk_still_removes_english_entirely(self):
+        """Русскоязычная команда — английский вторичен, штрафа нет вообще."""
+        from src.matcher.pre_filter import score_vacancy
+        res = score_vacancy(
+            "Technical Support Specialist",
+            "Fully remote. Crypto exchange support: tickets, SLA, KYC, Zendesk. "
+            "Russian speaking team. English level B2 or higher.",
+            "web3_support",
+        )
+        assert res["recommend"] is True
+        assert not any("B1" in r and "B2" in r for r in res["reasons"])
