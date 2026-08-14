@@ -714,3 +714,74 @@ class TestLinkedInParserParsing:
         p = self._parser()
         p._strikes = _MAX_429
         assert p._blocked() is True
+
+
+class TestEnglishGateBatch14Aug:
+    """Пачка 14.08.2026: шесть вакансий с требованием английского дошли до
+    Telegram по ШЕСТИ разным причинам. Каждая закреплена отдельным тестом —
+    иначе следующая правка regex тихо вернёт одну из них."""
+
+    @pytest.mark.parametrize("text", [
+        # между «fluency in» и English перечислены другие языки
+        "Fluency in both Russian and English is mandatory.",
+        # уровень CEFR: A1-A2 у кандидата, барьер начинается с B1
+        "English B1+ (correspondence, calls, reading contracts).",
+        "Candidates need English at level B2.",
+        # язык перечислен в скобках, предлога «in English» нет
+        "Good communication skills (both verbal and written, Russian and English).",
+    ])
+    def test_missed_phrasings_now_gated(self, text):
+        from src.matcher.pre_filter import _fluent_english_required
+        assert _fluent_english_required(text) is True
+
+    def test_inline_nice_to_have_does_not_cancel_next_requirement(self):
+        """«…is nice to have» в середине предложения — оговорка к своему пункту,
+        а не заголовок раздела и не пометка к требованию двумя пунктами ниже."""
+        from src.matcher.pre_filter import _fluent_english_required
+        t = ("Keen interest in sports betting is nice to have. Great attention to "
+             "detail. Fluency in English language (verbal and written).")
+        assert _fluent_english_required(t) is True
+
+    def test_plus_marker_still_works_without_sentence_break(self):
+        """Перелов: настоящая пометка рядом должна и дальше отключать гейт."""
+        from src.matcher.pre_filter import _fluent_english_required
+        assert _fluent_english_required("Nice to have: English language skills.") is False
+
+    def test_additional_languages_advantage_is_not_about_english(self):
+        from src.matcher.pre_filter import _fluent_english_required
+        t = "Fluency in English is required; additional languages are an advantage."
+        assert _fluent_english_required(t) is True
+
+    def test_a_level_english_is_not_a_barrier(self):
+        """A1/A2 — уровень самого кандидата, барьером быть не может."""
+        from src.matcher.pre_filter import _fluent_english_required
+        assert _fluent_english_required("English A2 is enough for this role.") is False
+
+
+class TestUnreadableScript:
+    """Вакансия целиком на местном алфавите: требования «нужен язык» в тексте нет,
+    оно самоочевидно для местного кандидата. TBC Capital (грузинский) проходила
+    предфильтр с баллом 58 — слова English в ней нет вообще."""
+
+    def test_georgian_description_is_a_barrier(self):
+        from src.matcher.pre_filter import _unreadable_script
+        t = "საბროკეროს შიდა კონტროლისა და ოპერაციების სპეციალისტი " * 12
+        assert _unreadable_script(t) is True
+
+    @pytest.mark.parametrize("text", [
+        "Customer support specialist for our crypto exchange. " * 12,
+        "Специалист поддержки криптобиржи, удалённая работа, тикеты. " * 12,
+    ])
+    def test_latin_and_cyrillic_pass(self, text):
+        from src.matcher.pre_filter import _unreadable_script
+        assert _unreadable_script(text) is False
+
+    def test_short_text_is_not_judged(self):
+        """На коротком тексте доля скачет — не судим."""
+        from src.matcher.pre_filter import _unreadable_script
+        assert _unreadable_script("სპეციალისტი") is False
+
+    def test_emoji_do_not_trigger_barrier(self):
+        from src.matcher.pre_filter import _unreadable_script
+        t = "🚀 Remote crypto support role, tickets and KYC. 🌍 Apply now! " * 12
+        assert _unreadable_script(t) is False

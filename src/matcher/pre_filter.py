@@ -167,8 +167,17 @@ _FLUENT_ENGLISH_REQUIRED = re.compile(
     # может стоять перечисление других языков.
     r'fluent\s+(?:in\s+(?:\w+\s+){0,3})?english|native\s+english|'
     r'native[\s-]level\s+english|'
-    r'english\s+(?:at\s+)?(?:c1|c2)\b|\benglish\s+(?:fluency|proficiency)|'
-    r'fluency\s+in\s+english|proficien\w*\s+in\s+english|'
+    # Уровни CEFR: у кандидата A1–A2, поэтому барьер — начиная с B1
+    # («English B1+ (correspondence, calls…)», Opiniq, 14.08.2026).
+    r'english\s+(?:at\s+)?(?:level\s+)?(?:b1|b2|c1|c2)\+?\b|'
+    r'\b(?:b1|b2|c1|c2)\+?\s+(?:level\s+)?english\b|'
+    r'\benglish\s+(?:fluency|proficiency)|'
+    # «Fluency in BOTH RUSSIAN AND English» (Opiniq) — между «in» и «English»
+    # бывает перечисление других языков.
+    r'fluency\s+in\s+(?:\w+\s+){0,3}english|proficien\w*\s+in\s+english|'
+    # «Good communication skills (both verbal and written, Russian and English)»
+    # — язык перечислен в скобках, предлога «in English» нет (Opiniq).
+    r'communicat\w*\s+skills?\s*\([^)]{0,90}english|'
     # «Excellent COMMAND OF spoken and written English», «strong knowledge of
     # business English» — между качеством и словом English бывает до 4 слов
     # (найдено 06.08.2026 на вакансии OKX: шаблон без этого не срабатывал).
@@ -259,10 +268,21 @@ def _english_modality(blob: str) -> str | None:
             # «Fluent in English; Mandarin proficiency IS A PLUS» — здесь «плюс»
             # относится к китайскому, а не к английскому. Если между английским
             # и пометкой упомянут другой язык — пометка не про английский.
-            if not _FOREIGN_LANG_PATTERN.search(tail[:plus.start()]):
+            between = tail[:plus.start()]
+            # «Fluency in English is required; ADDITIONAL LANGUAGES are an advantage»
+            # (Boundless) — «плюс» относится к другим языкам, названным обобщённо,
+            # а не поимённо. Раньше проверялось только конкретное название языка.
+            if not (_FOREIGN_LANG_PATTERN.search(between)
+                    or _OTHER_LANG_GENERIC.search(between)):
                 continue
-        elif _LANG_PLUS_PATTERN.search(head):
-            continue
+        else:
+            # Пометка «плюс» СЛЕВА относится к требованию, только если между ними
+            # нет границы предложения. «…is nice to have. Great attention to detail.
+            # Fluency in English» (Novibet) — это разные пункты, пометка не про
+            # английский.
+            hp = _LANG_PLUS_PATTERN.search(head)
+            if hp and not re.search(r"[.;•·\n]", head[hp.end():]):
+                continue
         if _in_optional_section(blob, m.start()):
             continue
         # Модальность ищем в окне вокруг самого требования, а не по всей вакансии:
@@ -331,13 +351,49 @@ _REQUIRED_SECTION = re.compile(
 )
 
 
+# «…is nice to have» в СЕРЕДИНЕ предложения — это оговорка к текущему пункту,
+# а не заголовок раздела. Novibet (14.08.2026): «Keen interest in the online gaming
+# world is nice to have» гасило требование английского двумя пунктами ниже.
+_INLINE_OPTIONAL = re.compile(r'\b(is|are|was|were|be|been|would|it.s|это)\s*$',
+                              re.IGNORECASE)
+
+# Обобщённое упоминание других языков — «additional languages are an advantage».
+_OTHER_LANG_GENERIC = re.compile(
+    r'(additional|other|second|further|extra|foreign)\s+languages?|'
+    r'(?:друг|дополнительн|иностранн)\w*\s+язык',
+    re.IGNORECASE,
+)
+
+
 def _in_optional_section(blob: str, pos: int) -> bool:
     """True, если позиция находится в разделе «желательно», а не «требования».
-    Сравниваем, какой заголовок ближе слева."""
+
+    Сравниваем, какой ЗАГОЛОВОК ближе слева. Встроенные в предложение обороты
+    («… is nice to have») заголовками не считаются — иначе они гасят требования
+    из следующих пунктов.
+    """
     head = blob[:pos]
-    last_opt = max((m.start() for m in _OPTIONAL_SECTION.finditer(head)), default=-1)
+    opts = [m.start() for m in _OPTIONAL_SECTION.finditer(head)
+            if not _INLINE_OPTIONAL.search(head[max(0, m.start() - 14): m.start()])]
+    last_opt = max(opts, default=-1)
     last_req = max((m.start() for m in _REQUIRED_SECTION.finditer(head)), default=-1)
     return last_opt > last_req
+
+
+# Описание на нечитаемом алфавите (грузинский, греческий, тайский, армянский,
+# CJK). Требования «нужен местный язык» в тексте нет — оно самоочевидно для
+# местного кандидата. Найдено 14.08.2026: вакансия TBC Capital целиком на
+# грузинском проходила предфильтр с баллом 58, слова English в ней нет вообще.
+_NON_READABLE_SCRIPT = re.compile(r"[^\x00-\x7FЀ-ӿ\s]")
+_UNREADABLE_SHARE = 0.25
+
+
+def _unreadable_script(blob: str) -> bool:
+    """True, если описание преимущественно не на латинице и не на кириллице."""
+    text = (blob or "").strip()
+    if len(text) < 200:          # на коротком тексте доля скачет, не судим
+        return False
+    return len(_NON_READABLE_SCRIPT.findall(text)) / len(text) >= _UNREADABLE_SHARE
 
 
 def _foreign_lang_required(blob: str) -> bool:
@@ -454,6 +510,9 @@ def _extra_hard_gates(title: str, text: str, role_key: str) -> str | None:
 
     if _foreign_lang_required(blob):
         return "требуется язык кроме ru/en"
+
+    if _unreadable_script(blob):
+        return "описание не на латинице/кириллице — нужен местный язык"
 
     if _citizenship_barrier(blob):
         return "требуется гражданство/право на работу в ЕС или США"
