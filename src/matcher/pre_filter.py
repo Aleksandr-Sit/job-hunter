@@ -165,7 +165,9 @@ _FLUENT_ENGLISH_REQUIRED = re.compile(
     r'('
     # «Fluent in RUSSIAN AND English» (Epson, 14.08.2026) — между «in» и «English»
     # может стоять перечисление других языков.
-    r'fluent\s+(?:in\s+(?:\w+\s+){0,3})?english|native\s+english|'
+    # «Fluent WRITTEN AND SPOKEN English» (RONIN Europe) — слова между «fluent»
+    # и «English» бывают не только после «in».
+    r'fluent\s+(?:\w+\s+){0,4}english|native\s+english|'
     r'native[\s-]level\s+english|'
     # Уровни CEFR: у кандидата A1–A2, поэтому барьер — начиная с B1
     # («English B1+ (correspondence, calls…)», Opiniq, 14.08.2026).
@@ -194,6 +196,9 @@ _FLUENT_ENGLISH_REQUIRED = re.compile(
     r'(?:excellent|strong|advanced|high|professional|solid|great|good|effective)\s+'
     r'(?:\w+\s+){0,5}communicat\w*(?:\s+skills?)?\s+(?:in|of)\s+english|'
     r'communicat\w*\s+(?:effectively\s+)?in\s+english\b|'
+    # «You are COMFORTABLE IN ENGLISH, spoken and written» (Vision Compliance,
+    # 14.08.2026) — требование через самочувствие, а не через уровень.
+    r'(?:comfortable|confident|at\s+ease)\s+(?:\w+\s+){0,2}in\s+english\b|'
     r'свободный\s+английск|английский\s+c1|английский\s+c2|уровень\s+носителя|'
     r'свободное\s+владение\s+английск|отличное\s+владение\s+английск'
     r')',
@@ -215,6 +220,15 @@ _SPOKEN_MARKERS = re.compile(
 # ЯВНЫЙ признак русскоязычного контура: роль обслуживает русскоговорящих. Отличать
 # от простого упоминания русского среди требуемых языков — иначе «Fluent in Russian
 # and English» в международной компании (Epson) считается RU-desk и гейт молчит.
+# Наш язык — продолжение перечисления, начатого сразу после него.
+# Только союз, НЕ запятая: «English, Georgian languages are preferred» (Epson) —
+# запятая начинает новую мысль о другом языке, а «Russian AND/OR Greek» (RONIN)
+# — одно перечисление, и пометка «плюс» относится ко всему списку.
+_LIST_CONTINUATION = re.compile(r'^\s*(?:and\s*/?\s*or|and|or|или|и)\s+',
+                                re.IGNORECASE)
+
+_RU_MENTION = re.compile(r'\brussian\w*|русск\w*|\bcis\b|\bснг\b', re.IGNORECASE)
+
 _RU_DESK_STRONG = re.compile(
     r'russian[\s-]speak\w*|russian\s+speakers?|\bcis\b|russian\s+desk|'
     r'russian[\s-]language\s+(?:support|desk|team)|'
@@ -254,47 +268,33 @@ def _english_modality(blob: str) -> str | None:
     # русскоязычный контур, а требование обоих языков — исключение не применяем
     # (найдено 14.08.2026 на вакансиях COLIBRIX ONE и Epson Middle East).
     if _hits(CRITERIA["english_boost"], blob)[0]:
+        # Русский, сам помеченный как ПЛЮС, признаком русскоязычного контура не
+        # является. «Fluent written and spoken English; knowledge of Russian
+        # and/or Greek would be considered an advantage» (RONIN Europe,
+        # 14.08.2026) — здесь обязателен английский, а русский лишь желателен.
+        ru = [m for m in _RU_MENTION.finditer(blob)]
+        ru_only_optional = bool(ru) and all(
+            _mention_is_optional(blob, m.start(), m.end()) for m in ru)
         # Явный RU-desk («russian speaking», «CIS», «русскоязычные клиенты») —
         # исключение работает всегда. Иначе оно снимается, если английский и
         # русский требуются ОДНОЙ фразой: это не русскоязычный контур, а
         # требование обоих языков (COLIBRIX ONE, Epson — 14.08.2026).
-        if _RU_DESK_STRONG.search(blob) or not _EN_AND_RU.search(blob):
+        if not ru_only_optional and (
+                _RU_DESK_STRONG.search(blob) or not _EN_AND_RU.search(blob)):
             return None
     found: set[str] = set()
     for m in _FLUENT_ENGLISH_REQUIRED.finditer(blob):
-        head = blob[max(0, m.start() - 60): m.start()]
-        tail = blob[m.end(): m.end() + 60]
-        plus = _LANG_PLUS_PATTERN.search(tail)
-        # «Nice to have:» с двоеточием — ЗАГОЛОВОК следующего раздела, а не оговорка
-        # к предыдущему требованию. Без этой проверки требование английского
-        # обнулялось соседним блоком (COLIBRIX ONE, 14.08.2026).
-        if plus and tail[plus.end():plus.end() + 2].lstrip().startswith(":"):
-            plus = None
-        if plus:
-            # «Fluent in English; Mandarin proficiency IS A PLUS» — здесь «плюс»
-            # относится к китайскому, а не к английскому. Если между английским
-            # и пометкой упомянут другой язык — пометка не про английский.
-            between = tail[:plus.start()]
-            # «Fluency in English is required; ADDITIONAL LANGUAGES are an advantage»
-            # (Boundless) — «плюс» относится к другим языкам, названным обобщённо,
-            # а не поимённо. Раньше проверялось только конкретное название языка.
-            if not (_FOREIGN_LANG_PATTERN.search(between)
-                    or _OTHER_LANG_GENERIC.search(between)):
-                continue
-        else:
-            # Пометка «плюс» СЛЕВА относится к требованию, только если между ними
-            # нет границы предложения. «…is nice to have. Great attention to detail.
-            # Fluency in English» (Novibet) — это разные пункты, пометка не про
-            # английский.
-            hp = _LANG_PLUS_PATTERN.search(head)
-            if hp and not re.search(r"[.;•·\n]", head[hp.end():]):
-                continue
+        if _mention_is_optional(blob, m.start(), m.end()):
+            continue
         if _in_optional_section(blob, m.start()):
             continue
         # Модальность ищем в окне вокруг самого требования, а не по всей вакансии:
         # «созвоны с командой» в разделе про условия не делают английский устным.
         window = blob[max(0, m.start() - 90): m.end() + 90]
-        if _CEFR_B_LEVEL.search(m.group(0)):
+        # Уровень ищем и в хвосте: «fluent russian and english» съедает слово
+        # English, и отдельный шаблон «english level b2» уже не срабатывает —
+        # finditer не даёт пересекающихся совпадений.
+        if _CEFR_B_LEVEL.search(m.group(0) + " " + blob[m.end(): m.end() + 30]):
             # Работодатель назвал уровень числом — верим ему, а не окружающим
             # словам. Если в вакансии есть ОТДЕЛЬНОЕ требование устного
             # английского, оно даст свой матч и победит по строгости ниже.
@@ -305,7 +305,10 @@ def _english_modality(blob: str) -> str | None:
             found.add("written")
         else:
             found.add("generic")
-    for level in ("spoken", "generic", "level_b", "written"):   # строгое побеждает
+    # Названный числом уровень важнее размытого прилагательного рядом:
+    # «Fluent Russian and English level B2» — верим «B2», а не «fluent».
+    # Но явное требование УСТНОГО английского перебивает и его.
+    for level in ("spoken", "level_b", "generic", "written"):
         if level in found:
             return level
     return None
@@ -337,7 +340,9 @@ _FOREIGN_LANG_PATTERN = re.compile(
 
 # «Spanish is a plus» — не требование: не блокируем, если рядом сигнал желательности
 _LANG_PLUS_PATTERN = re.compile(
-    r'(is\s+a\s+plus|as\s+a\s+plus|nice[\s-]to[\s-]have|would\s+be\s+a\s+plus|'
+    # «ARE a plus», «WILL BE a plus» — были не покрыты, ловилось только «is a plus»
+    # (найдено 14.08.2026 при разборе Teroxx).
+    r'((?:is|are|would\s+be|will\s+be|as)\s+a\s+plus|nice[\s-]to[\s-]have|'
     r'advantage|beneficial|preferred|bonus|плюсом|преимуществ|приветствуется|желательно)',
     re.IGNORECASE,
 )
@@ -362,11 +367,34 @@ _REQUIRED_SECTION = re.compile(
 )
 
 
-# «…is nice to have» в СЕРЕДИНЕ предложения — это оговорка к текущему пункту,
-# а не заголовок раздела. Novibet (14.08.2026): «Keen interest in the online gaming
-# world is nice to have» гасило требование английского двумя пунктами ниже.
-_INLINE_OPTIONAL = re.compile(r'\b(is|are|was|were|be|been|would|it.s|это)\s*$',
-                              re.IGNORECASE)
+_SENTENCE_BREAK = re.compile(r"[.;•·\n]")
+
+# Заголовком раздела может быть только пометка соответствующей ФОРМЫ. Одиночные
+# «advantage», «preferred», «beneficial», «bonus» — всегда часть предложения
+# («…would be considered an advantage», RONIN; «…strongly preferred», Daman).
+_HEADERISH_OPTIONAL = re.compile(
+    r'^(?:nice[\s-]to[\s-]have|preferred\s+qualification\w*|preferred\s+skill\w*|'
+    r'bonus\s+point\w*|good\s+to\s+have|desirable|advantageous|желательн\w*)$',
+    re.IGNORECASE,
+)
+# «… is nice to have» — глагол-связка перед пометкой означает, что это оговорка
+# к текущему пункту, а не заголовок следующего раздела.
+_LINKING_VERB_BEFORE = re.compile(
+    r'\b(is|are|was|were|be|been|will|would|it.s|это)\s*$', re.IGNORECASE)
+
+
+def _marker_is_header(before: str, marker: str) -> bool:
+    """Пометка «желательно» — ЗАГОЛОВОК раздела, а не оговорка к текущему пункту?
+
+    Различать обязательно, иначе оговорка гасит требования соседних пунктов, а
+    заголовок наоборот делает обязательным то, что помечено как плюс.
+    Границей предложения пользоваться НЕЛЬЗЯ: после снятия HTML списки часто идут
+    без точек, и настоящий заголовок выглядит стоящим в середине фразы (Yodeck:
+    «…at C1 level or above Nice to have Previous helpdesk…»).
+    """
+    if not _HEADERISH_OPTIONAL.match(marker.strip()):
+        return False
+    return not _LINKING_VERB_BEFORE.search(before[-16:])
 
 # Обобщённое упоминание других языков — «additional languages are an advantage».
 _OTHER_LANG_GENERIC = re.compile(
@@ -385,7 +413,7 @@ def _in_optional_section(blob: str, pos: int) -> bool:
     """
     head = blob[:pos]
     opts = [m.start() for m in _OPTIONAL_SECTION.finditer(head)
-            if not _INLINE_OPTIONAL.search(head[max(0, m.start() - 14): m.start()])]
+            if _marker_is_header(head[:m.start()], m.group(0))]
     last_opt = max(opts, default=-1)
     last_req = max((m.start() for m in _REQUIRED_SECTION.finditer(head)), default=-1)
     return last_opt > last_req
@@ -407,6 +435,42 @@ def _unreadable_script(blob: str) -> bool:
     return len(_NON_READABLE_SCRIPT.findall(text)) / len(text) >= _UNREADABLE_SHARE
 
 
+def _mention_is_optional(blob: str, start: int, end: int) -> bool:
+    """True, если упоминание языка на [start:end] помечено как «плюс/желательно».
+
+    Общая логика для гейта английского и гейта прочих языков — раньше она была
+    продублирована и расходилась. Три случая, когда пометка НЕ относится к нашему
+    языку (все найдены на живых вакансиях 14.08.2026):
+      1. «English. Nice to have: …» — двоеточие, это заголовок следующего раздела;
+      2. «English is required; additional languages are an advantage» — «плюс»
+         относится к другому языку, названному поимённо или обобщённо;
+      3. «…HubSpot will be a plus. Languages: fluency in English» — пометка из
+         предыдущего предложения.
+    """
+    head = blob[max(0, start - 60): start]
+    tail = blob[end: end + 60]
+
+    plus = _LANG_PLUS_PATTERN.search(tail)
+    # случай 1: пометка справа — заголовок СЛЕДУЮЩЕГО раздела, к нашему
+    # требованию она не относится («…English, at C1 level or above. Nice to have …»)
+    if plus and _marker_is_header(tail[:plus.start()], plus.group(0)):
+        plus = None
+    if plus:
+        between = tail[:plus.start()]    # случай 2
+        # «Russian AND/OR Greek would be considered an advantage» (RONIN) — наш
+        # язык в ТОМ ЖЕ перечислении, что и помеченный плюсом, значит пометка
+        # относится и к нему. Отличается от «Greek (written and verbal) and
+        # German speakers is an advantage» (Teroxx), где после нашего языка
+        # начинается новая конструкция, а не продолжение списка.
+        if _LIST_CONTINUATION.match(between):
+            return True
+        return not (_FOREIGN_LANG_PATTERN.search(between)
+                    or _OTHER_LANG_GENERIC.search(between))
+
+    hp = _LANG_PLUS_PATTERN.search(head)  # случай 3
+    return bool(hp) and not _SENTENCE_BREAK.search(head[hp.end():])
+
+
 def _foreign_lang_required(blob: str) -> bool:
     """True, если иностранный язык требуется (а не «будет плюсом»).
 
@@ -414,8 +478,11 @@ def _foreign_lang_required(blob: str) -> bool:
     (2) язык внутри раздела «Preferred/Nice to have» — тоже не требование.
     """
     for m in _FOREIGN_LANG_PATTERN.finditer(blob):
-        window = blob[max(0, m.start() - 60): m.end() + 60]
-        if _LANG_PLUS_PATTERN.search(window):
+        # Раньше «плюс» искался в окне ±60 без разбора, к чему он относится.
+        # «professional fluency in English and Greek (written and verbal) and
+        # German speakers IS AN ADVANTAGE» (Teroxx, 14.08.2026): пометка про
+        # немецкий гасила обязательный греческий.
+        if _mention_is_optional(blob, m.start(), m.end()):
             continue
         if _in_optional_section(blob, m.start()):
             continue

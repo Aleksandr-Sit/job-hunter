@@ -842,3 +842,118 @@ class TestCefrBLevel:
         )
         assert res["recommend"] is True
         assert not any("B1" in r and "B2" in r for r in res["reasons"])
+
+
+class TestOptionalMarkerScope:
+    """К чему относится пометка «плюс» — самый частый источник и недолова,
+    и перелова. Логика общая для гейта английского и гейта прочих языков
+    (`_mention_is_optional`), раньше была продублирована и расходилась."""
+
+    def test_plus_from_previous_sentence_does_not_cancel(self):
+        """Teroxx 14.08.2026: «HubSpot will be a plus.» гасило требование
+        английского из СЛЕДУЮЩЕГО пункта."""
+        from src.matcher.pre_filter import _fluent_english_required
+        t = ("Hands-on experience with HubSpot will be a plus. Languages: "
+             "professional fluency in English and Greek (written and verbal).")
+        assert _fluent_english_required(t) is True
+
+    def test_plus_about_another_language_does_not_cancel_this_one(self):
+        """Teroxx: «german speakers is an advantage» гасило обязательный греческий."""
+        from src.matcher.pre_filter import _foreign_lang_required
+        t = ("Languages: professional fluency in English and Greek (written and "
+             "verbal) and German speakers is an advantage.")
+        assert _foreign_lang_required(t) is True
+
+    def test_real_inline_plus_still_cancels(self):
+        """Перелов: настоящая оговорка в том же предложении должна работать."""
+        from src.matcher.pre_filter import _foreign_lang_required
+        assert _foreign_lang_required("German language skills are a plus.") is False
+
+    def test_header_plus_still_cancels(self):
+        from src.matcher.pre_filter import _fluent_english_required
+        assert _fluent_english_required("Nice to have: English language skills.") is False
+
+    def test_comfortable_in_english_is_a_requirement(self):
+        """Vision Compliance: требование через самочувствие, а не через уровень."""
+        from src.matcher.pre_filter import _english_modality
+        assert _english_modality("You are comfortable in English, spoken and "
+                                 "written.") == "spoken"
+
+
+class TestSectionHeaderDetection:
+    """Заголовок раздела «желательно» vs оговорка к текущему пункту.
+
+    Границей предложения пользоваться нельзя: после снятия HTML списки идут без
+    точек, и настоящий заголовок выглядит стоящим в середине фразы (Yodeck)."""
+
+    def test_predicative_plus_is_never_a_header(self):
+        from src.matcher.pre_filter import _marker_is_header
+        assert _marker_is_header("Experience with HubSpot ", "will be a plus") is False
+        assert _marker_is_header("German language skills ", "are a plus") is False
+
+    def test_linking_verb_before_marker_means_inline(self):
+        from src.matcher.pre_filter import _marker_is_header
+        assert _marker_is_header("Keen interest in betting is ", "nice to have") is False
+
+    def test_marker_without_linking_verb_is_header(self):
+        """Yodeck: «…at C1 level or above Nice to have Previous helpdesk…»"""
+        from src.matcher.pre_filter import _marker_is_header
+        assert _marker_is_header("English, at C1 level or above ", "nice to have") is True
+
+    def test_marker_at_start_is_header(self):
+        from src.matcher.pre_filter import _marker_is_header
+        assert _marker_is_header("", "bonus point") is True
+
+    def test_optional_section_after_requirement_does_not_cancel_it(self):
+        """Требование, а СЛЕДОМ заголовок «Nice to have» — требование остаётся."""
+        from src.matcher.pre_filter import _fluent_english_required
+        t = ("Excellent written and spoken English, at C1 level or above "
+             "Nice to have Previous helpdesk experience")
+        assert _fluent_english_required(t) is True
+
+    def test_languages_inside_nice_to_have_section_are_optional(self):
+        """Обратная сторона: языки ВНУТРИ раздела «желательно» — не требование."""
+        from src.matcher.pre_filter import _foreign_lang_required
+        t = ("Excellent English at C1 level Nice to have Previous helpdesk "
+             "experience a second language, particularly German, French or Dutch")
+        assert _foreign_lang_required(t) is False
+
+
+class TestOptionalMarkerShape:
+    """Форма пометки решает, заголовок это или оговорка. Одиночные «advantage»,
+    «preferred», «beneficial» заголовками быть не могут — иначе помеченный как
+    плюс язык становится обязательным (RONIN Europe, Daman Securities 14.08.2026)."""
+
+    def test_bare_advantage_is_never_a_header(self):
+        from src.matcher.pre_filter import _marker_is_header
+        assert _marker_is_header(" would be considered an ", "advantage") is False
+        assert _marker_is_header(" and english strongly ", "preferred") is False
+
+    def test_greek_marked_as_advantage_is_not_required(self):
+        from src.matcher.pre_filter import _foreign_lang_required
+        t = ("Fluent written and spoken English; knowledge of Russian and/or "
+             "Greek would be considered an advantage.")
+        assert _foreign_lang_required(t) is False
+
+    def test_arabic_strongly_preferred_is_not_required(self):
+        from src.matcher.pre_filter import _foreign_lang_required
+        t = ("Bilingual proficiency in Arabic and English strongly preferred, "
+             "with excellent communication skills.")
+        assert _foreign_lang_required(t) is False
+
+    def test_russian_as_a_plus_does_not_disable_english_gate(self):
+        """RONIN: английский обязателен, русский лишь желателен — гейт обязан
+        сработать, иначе вакансия дойдёт зря."""
+        from src.matcher.pre_filter import _fluent_english_required
+        # _hits регистрозависим: score_vacancy подаёт нормализованный текст,
+        # поэтому и тест подаёт его в нижнем регистре
+        t = ("fluent written and spoken english; knowledge of russian and/or "
+             "greek would be considered an advantage.")
+        assert _fluent_english_required(t) is True
+
+    def test_real_ru_desk_still_disables_english_gate(self):
+        """Перелов: настоящая русскоязычная вакансия не должна начать резаться."""
+        from src.matcher.pre_filter import _fluent_english_required
+        t = ("russian speaking support specialist for our cis users. "
+             "fluent english required.")
+        assert _fluent_english_required(t) is False
