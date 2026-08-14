@@ -163,15 +163,28 @@ _EXPLICIT_REMOTE = re.compile(
 # требуют 4 (2%), и ни одна из них не русскоязычная.
 _FLUENT_ENGLISH_REQUIRED = re.compile(
     r'('
-    r'fluent\s+(?:in\s+)?english|native\s+english|native[\s-]level\s+english|'
+    # «Fluent in RUSSIAN AND English» (Epson, 14.08.2026) — между «in» и «English»
+    # может стоять перечисление других языков.
+    r'fluent\s+(?:in\s+(?:\w+\s+){0,3})?english|native\s+english|'
+    r'native[\s-]level\s+english|'
     r'english\s+(?:at\s+)?(?:c1|c2)\b|\benglish\s+(?:fluency|proficiency)|'
     r'fluency\s+in\s+english|proficien\w*\s+in\s+english|'
     # «Excellent COMMAND OF spoken and written English», «strong knowledge of
     # business English» — между качеством и словом English бывает до 4 слов
     # (найдено 06.08.2026 на вакансии OKX: шаблон без этого не срабатывал).
-    r'(?:excellent|strong|advanced|high|professional|full|solid|great)\s+'
-    r'(?:command|proficiency|knowledge|level|standard)\s+(?:of|in)\s+(?:\w+\s+){0,4}english|'
+    r'(?:excellent|strong|advanced|high|professional|full|solid|great|good)\s+'
+    # «Good SKILLS in English language» (Iron Mountain, 14.08.2026) — существительное
+    # не только command/level, но и skills.
+    r'(?:command|proficiency|knowledge|level|standard|skills?)\s+(?:of|in)\s+'
+    r'(?:\w+\s+){0,4}english|'
     r'(?:excellent|strong|advanced|professional)\s+(?:\w+\s+){0,3}english\b|'
+    # «Excellent written and verbal communication skills IN ENGLISH» — между
+    # качеством и словом English шесть слов, и существительное здесь не
+    # «command/level», а «communication skills» (найдено 14.08.2026 на вакансии
+    # Crypto Casino Operations Manager, SearchTalent).
+    r'(?:excellent|strong|advanced|high|professional|solid|great|good|effective)\s+'
+    r'(?:\w+\s+){0,5}communicat\w*(?:\s+skills?)?\s+(?:in|of)\s+english|'
+    r'communicat\w*\s+(?:effectively\s+)?in\s+english\b|'
     r'свободный\s+английск|английский\s+c1|английский\s+c2|уровень\s+носителя|'
     r'свободное\s+владение\s+английск|отличное\s+владение\s+английск'
     r')',
@@ -190,6 +203,24 @@ _SPOKEN_MARKERS = re.compile(
     r'устн\w*|разговорн\w*|переговор\w*|созвон\w*|звонк\w*',
     re.IGNORECASE,
 )
+# ЯВНЫЙ признак русскоязычного контура: роль обслуживает русскоговорящих. Отличать
+# от простого упоминания русского среди требуемых языков — иначе «Fluent in Russian
+# and English» в международной компании (Epson) считается RU-desk и гейт молчит.
+_RU_DESK_STRONG = re.compile(
+    r'russian[\s-]speak\w*|russian\s+speakers?|\bcis\b|russian\s+desk|'
+    r'russian[\s-]language\s+(?:support|desk|team)|'
+    r'русскоязычн\w*|русскоговорящ\w*|\bснг\b',
+    re.IGNORECASE,
+)
+
+# Английский и русский требуются вместе, одной фразой — это НЕ русскоязычный контур.
+_EN_AND_RU = re.compile(
+    r'(english\s*(?:,|and|&|/|или|и)\s*(?:\w+\s+){0,2}russian|'
+    r'russian\s*(?:,|and|&|/|или|и)\s*(?:\w+\s+){0,2}english|'
+    r'англ\w*\s*(?:,|и|/)\s*русск|русск\w*\s*(?:,|и|/)\s*англ)',
+    re.IGNORECASE,
+)
+
 _WRITTEN_MARKERS = re.compile(
     r'\b(written|writing|correspondence|documentation)\b|письмен\w*|переписк\w*',
     re.IGNORECASE,
@@ -202,13 +233,28 @@ def _english_modality(blob: str) -> str | None:
     «желательно»; (3) вакансия русскоязычная/CIS — там английский обычно вторичен,
     и решение об отклике кандидат принимает сам.
     """
+    # Упоминание русского обычно означает русскоязычную команду — тогда английский
+    # вторичен и решение об отклике за кандидатом. НО если английский и русский
+    # требуются В ОДНОЙ фразе («Fluent in Russian and English»), это не
+    # русскоязычный контур, а требование обоих языков — исключение не применяем
+    # (найдено 14.08.2026 на вакансиях COLIBRIX ONE и Epson Middle East).
     if _hits(CRITERIA["english_boost"], blob)[0]:
-        return None
+        # Явный RU-desk («russian speaking», «CIS», «русскоязычные клиенты») —
+        # исключение работает всегда. Иначе оно снимается, если английский и
+        # русский требуются ОДНОЙ фразой: это не русскоязычный контур, а
+        # требование обоих языков (COLIBRIX ONE, Epson — 14.08.2026).
+        if _RU_DESK_STRONG.search(blob) or not _EN_AND_RU.search(blob):
+            return None
     found: set[str] = set()
     for m in _FLUENT_ENGLISH_REQUIRED.finditer(blob):
         head = blob[max(0, m.start() - 60): m.start()]
         tail = blob[m.end(): m.end() + 60]
         plus = _LANG_PLUS_PATTERN.search(tail)
+        # «Nice to have:» с двоеточием — ЗАГОЛОВОК следующего раздела, а не оговорка
+        # к предыдущему требованию. Без этой проверки требование английского
+        # обнулялось соседним блоком (COLIBRIX ONE, 14.08.2026).
+        if plus and tail[plus.end():plus.end() + 2].lstrip().startswith(":"):
+            plus = None
         if plus:
             # «Fluent in English; Mandarin proficiency IS A PLUS» — здесь «плюс»
             # относится к китайскому, а не к английскому. Если между английским

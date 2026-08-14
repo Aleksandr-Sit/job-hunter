@@ -573,6 +573,10 @@ class TestEnglishModality:
         "Strong written and verbal English; a confident communicator.",
         "Fluent English - daily calls with international partners.",
         "Fluent English and participation in weekly meetings.",
+        # Найдено 14.08.2026 на живой вакансии (Crypto Casino Operations Manager,
+        # SearchTalent): между «Excellent» и «English» шесть слов, а существительное
+        # не «command/level», а «communication skills» — шаблон не срабатывал.
+        "Excellent written and verbal communication skills in English.",
         # «verbally and in writing» (Binance): при `verbal` вместо `verbal\w*`
         # это определялось как ПИСЬМЕННОЕ требование — найдено замером 05.08.2026
         "Strong communication skills in English verbally and in writing.",
