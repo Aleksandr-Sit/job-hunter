@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from . import storage
 from .bot.callback_handler import run_listener
 from .bot.notifier import send_daily_summary, send_jobs_batch, send_text
+from .log_redact import RedactingFilter
 from .matcher.cerebras_matcher import match_jobs
 from .matcher.pre_filter import _prefilter_version, dedupe_jobs, score_job
 from .models import Job
@@ -26,21 +27,27 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 _LOG_FILE = Path(__file__).parent.parent / "data" / "logs" / "job-hunter.log"
 _LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 
+_handlers = [
+    logging.StreamHandler(),
+    # Без ротации лог рос неограниченно: 64 МБ за два месяца на диске 9.7 ГБ.
+    RotatingFileHandler(_LOG_FILE, maxBytes=5_000_000, backupCount=3,
+                        encoding="utf-8"),
+]
+# Фильтр вешаем на ХЕНДЛЕРЫ, а не на отдельные логгеры: так он ловит запись
+# независимо от того, какая библиотека её породила (см. src/log_redact.py).
+for _h in _handlers:
+    _h.addFilter(RedactingFilter())
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-        # Без ротации лог рос неограниченно: 64 МБ за два месяца на диске 9.7 ГБ.
-        RotatingFileHandler(_LOG_FILE, maxBytes=5_000_000, backupCount=3,
-                            encoding="utf-8"),
-    ],
+    handlers=_handlers,
 )
 
-# httpx на INFO печатает URL запроса целиком. У Telegram-бота токен лежит В URL
-# (`/bot<TOKEN>/getUpdates`), а polling идёт раз в 10 секунд — то есть секрет
-# попадал в файл лога тысячи раз в сутки. WARNING оставляет только ошибки.
-for _noisy in ("httpx", "httpcore", "telegram", "apscheduler", "urllib3"):
+# Второй рубеж — глушим болтливые HTTP-логгеры. Один только этот список защитой не
+# считается: он уже оказывался неполным (после httpx нашёлся httpx2 с тем же
+# поведением), поэтому основную работу делает фильтр выше.
+for _noisy in ("httpx", "httpx2", "httpcore", "telegram", "apscheduler", "urllib3"):
     logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
