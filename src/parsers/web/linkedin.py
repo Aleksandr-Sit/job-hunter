@@ -44,6 +44,12 @@ _HEADERS = {
 _MAX_429 = 3          # подряд, после чего считаем себя забаненными на этот цикл
 _PAGE = 10            # столько карточек отдаёт одна страница выдачи
 
+# geoId «весь мир». Нужен для слежки за компанией: фильтр `f_C` сам по себе гостевым
+# эндпоинтом не принимается — на запрос без keywords/geoId приходит пустой ответ
+# (26 байт). Проверено 15.08.2026: `f_C=13336409&geoId=92000000` отдаёт ровно
+# вакансии Binance и ничего больше.
+_WORLDWIDE_GEO = "92000000"
+
 _RE_URL = re.compile(r'href="(https://[a-z.]*linkedin\.com/jobs/view/[^"?]+)')
 _RE_TITLE = re.compile(r'base-search-card__title"[^>]*>\s*([^<]+)')
 _RE_COMPANY = re.compile(r'base-search-card__subtitle"[^>]*>\s*(?:<a[^>]*>)?\s*([^<]+)')
@@ -72,6 +78,7 @@ class LinkedInParser(BaseParser):
         self.hours_old: int = p.get("hours_old", 168)
         self.max_descriptions: int = p.get("max_descriptions", 400)
         self.delay: float = p.get("delay_seconds", 0.7)
+        self.watch_companies: list[dict] = p.get("watch_companies", [])
         self._strikes = 0
 
     # ── HTTP ──────────────────────────────────────────────────────────────────
@@ -106,7 +113,12 @@ class LinkedInParser(BaseParser):
     def _cards(self, query: str, geo_id: str, start: int) -> list[dict]:
         url = (f"{_SEARCH}?keywords={urllib.parse.quote(query)}&geoId={geo_id}"
                f"&f_TPR=r{self.hours_old * 3600}&start={start}")
-        html = self._get(url)
+        return self._parse_cards(self._get(url))
+
+    @staticmethod
+    def _parse_cards(html: str) -> list[dict]:
+        """Разбор выдачи. Общий для поиска по странам и слежки за компанией —
+        формат карточки один и тот же, дублировать разбор нельзя."""
         out: list[dict] = []
         for block in html.split("<li>")[1:]:
             m_url = _RE_URL.search(block)
@@ -126,6 +138,15 @@ class LinkedInParser(BaseParser):
             })
         return out
 
+    def _company_cards(self, company_id: str, start: int) -> list[dict]:
+        """Все вакансии одной компании. Без фильтра по свежести (`f_TPR`) намеренно:
+        отслеживаются компании, которые публикуются редко, и пропустить открытие
+        из-за окна в неделю дороже, чем разок увидеть старую вакансию — повторы
+        всё равно снимет seen-гейт."""
+        url = (f"{_SEARCH}?f_C={urllib.parse.quote(str(company_id))}"
+               f"&geoId={_WORLDWIDE_GEO}&start={start}")
+        return self._parse_cards(self._get(url))
+
     def _description(self, job_id: str) -> str:
         body = self._get(_POSTING + job_id)
         return _clean(_RE_TAG.sub(" ", body)) if body else ""
@@ -134,11 +155,29 @@ class LinkedInParser(BaseParser):
     def parse(self) -> list[Job]:
         if not self.enabled:
             return []
-        if not self.geos or not self.queries:
-            logger.warning("LinkedIn: не заданы queries или geos в settings.yaml")
+        if not (self.geos and self.queries) and not self.watch_companies:
+            logger.warning("LinkedIn: не заданы ни queries/geos, ни watch_companies")
             return []
 
         found: dict[str, dict] = {}
+
+        # Отслеживаемые компании идут ПЕРВЫМИ. Порядок важен: описания качаются в
+        # порядке вставки и обрываются на max_descriptions (400) — в хвосте очереди
+        # редкая вакансия из watch-списка просто не доехала бы до скоринга.
+        for comp in self.watch_companies:
+            cid, cname = str(comp.get("id", "")), comp.get("name", "?")
+            if not cid or self._blocked():
+                continue
+            before = len(found)
+            for page in range(self.pages_per_query):
+                cards = self._company_cards(cid, page * _PAGE)
+                for c in cards:
+                    found.setdefault(c["id"], c)
+                time.sleep(self.delay)
+                if len(cards) < _PAGE:
+                    break
+            logger.info("LinkedIn watch %s: %d вакансий", cname, len(found) - before)
+
         for geo in self.geos:
             geo_id, geo_name = str(geo.get("id", "")), geo.get("name", "?")
             if not geo_id:
