@@ -90,11 +90,21 @@ _GENERIC_HEADER = {
 }
 
 
+def _generic_header(cleaned: str) -> bool:
+    """«Вакансия» и «Вакансия:» — одно и то же.
+
+    Раньше сравнение шло со строкой как есть, поэтому двоеточие делало заголовок
+    «содержательным»: в проде 15.08.2026 в AI уходила карточка с названием
+    «Вакансия:» и компанией «@jobers».
+    """
+    return cleaned.lower().strip(" :：-–—.!") in _GENERIC_HEADER
+
+
 def _pick_title(lines: list[str]) -> str:
     """Первая содержательная строка (≥8 букв, не общий заголовок), а не эмодзи/хэштег."""
     for line in lines:
         cleaned = _clean_title(line)
-        if sum(ch.isalpha() for ch in cleaned) >= 8 and cleaned.lower() not in _GENERIC_HEADER:
+        if sum(ch.isalpha() for ch in cleaned) >= 8 and not _generic_header(cleaned):
             return cleaned[:120]
     # Фолбэк: первая строка с хоть какими-то буквами. Пост целиком из эмодзи/
     # пунктуации давал ПУСТОЙ заголовок и карточку без названия (найдено тестом).
@@ -103,6 +113,34 @@ def _pick_title(lines: list[str]) -> str:
         if any(ch.isalpha() for ch in cleaned):
             return cleaned[:120]
     return "Job opening"
+
+
+# Рекламные вставки и служебные объявления канала. Проверяются по всему тексту:
+# «sponsored» обычно стоит в шапке, но «реклама» и «erid» — в подвале поста.
+_PROMO_MARKERS = (
+    "sponsored", "sponsored job post", "promoted post", "#реклама", "реклама:",
+    "на правах рекламы", "erid:", "партнёрский пост", "партнерский пост",
+)
+# Служебные объявления канала: приветствия, анонсы, «мы вернулись».
+_CHANNEL_CHATTER = (
+    "добрый день, друзья", "всем привет", "дорогие подписчики", "уважаемые подписчики",
+    "отпуск окончен", "мы вернулись", "с возвращением", "напоминаем, что",
+)
+
+
+def _is_promo_post(text_lower: str) -> bool:
+    """True для рекламы и служебных постов канала — это не вакансии.
+
+    Реклама режется всегда. Служебное объявление режется только если в посте нет
+    ни одного маркера вакансии: пост может начинаться с приветствия и дальше
+    содержать настоящую вакансию, и такой терять нельзя.
+    """
+    if any(m in text_lower for m in _PROMO_MARKERS):
+        return True
+    head = text_lower[:120]
+    return any(m in head for m in _CHANNEL_CHATTER) and not any(
+        v in text_lower for v in _VACANCY_MARKERS
+    )
 
 
 def _is_resume_post(text_lower: str) -> bool:
@@ -151,6 +189,11 @@ def _fetch_channel(channel: str, timeout: int = 20) -> list[Job]:
             continue
         # Пропускаем посты-резюме / «ищу работу» — это не вакансии (F1)
         if _is_resume_post(text_lower):
+            continue
+        # ...и рекламу/объявления канала. В свежей пачке 15.08.2026 до AI доходили
+        # «SPONSORED JOB POST» (66 баллов) и «Добрый день, друзья. Отпуск окончен,
+        # пора возвращаться к работе» (40 баллов) — оба тратили бюджет Cerebras.
+        if _is_promo_post(text_lower):
             continue
 
         # Дата публикации

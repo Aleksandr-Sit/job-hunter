@@ -46,8 +46,10 @@ Measured on production, 8–15 August 2026 (16 scheduled runs):
       98 delivered to Telegram       ≈ 12 per day
 ```
 
-A single fresh batch scored end-to-end with the seen-gate disabled (3 133 vacancies)
-shows where the pre-filter actually spends its cuts:
+A single fresh batch scored end-to-end with the seen-gate disabled (3 420 vacancies)
+shows where the pre-filter actually spends its cuts. Counts below are from the
+3 133-vacancy batch measured before the HH second pass landed; the proportions did
+not shift:
 
 | Rejection reason | Vacancies |
 |---|---|
@@ -144,10 +146,31 @@ fired, not by editing the regex.
 
 **A source was capped and nobody had checked.**
 HH.ru is read over RSS, which hard-caps at **20 vacancies per query** — pagination is
-silently ignored (`&page=1,2,3` all return the same first ID). Nearly every query was
-sitting on that ceiling. Re-querying with `order_by=publication_time` returns a
-*different* set: measured across 8 queries, 160 vacancies → **123 additional new
-ones (+77%)**.
+silently ignored (`&page=1,2,3` all return the same first ID), and `per_page` was a
+dead parameter. Nearly every query was sitting on that ceiling. Since the parser
+already sorted by date, the fix was a *second* pass sorted by relevance, which returns
+a different slice of the same query. Measured on all 45 queries: 530 → **+333 new
+(+63%)**. The pass is skipped for queries that returned fewer than 20 results — those
+are not truncated, and all 18 of them yielded exactly zero.
+
+End to end on a full batch: 3 133 → **3 420** vacancies, and 243 → **279** clearing
+the pre-filter threshold.
+
+**The obvious companion change turned out to be worthless.**
+If the ceiling was hiding AI-automation roles, adding the exact market job titles
+(`AI-интегратор`, `внедрение ИИ`, `AI Automation Engineer`, and six more) should help.
+Measured: **+113 raw vacancies, +2 through the gate** — and both were sales roles.
+The `AI Automation Engineer` postings did show up, but they came from the *second
+pass* on existing queries. They had always been findable; the 20-vacancy ceiling was
+cutting them off. The queries were reverted and the negative result written into
+`settings.yaml` so it does not get re-tried.
+
+**Deduplication ran one stage too late.**
+Near-duplicates (the same role posted under several `geoId`s, or titles differing only
+by a double space) were collapsed just before sending — so Telegram never showed
+copies, but every copy had already consumed its own slice of the Cerebras budget.
+Moving the collapse ahead of the AI call removes **34 of 279 candidates (12%)** on a
+full batch.
 
 **Measuring the pipeline is what found the security bug.**
 Reading the log to build the funnel above revealed that `httpx` logs request URLs at

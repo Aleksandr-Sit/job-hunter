@@ -20,6 +20,12 @@ logger = logging.getLogger(__name__)
 
 _CONFIG = Path(__file__).parent.parent.parent / "config" / "settings.yaml"
 _RSS_URL = "https://hh.ru/search/vacancy/rss"
+
+# RSS жёстко отдаёт максимум 20 вакансий на запрос. Проверено 15.08.2026:
+# `per_page` игнорируется (раньше слался 50 — мёртвый параметр), пагинация тоже:
+# `&page=1,2,3` возвращают ту же выдачу с тем же первым ID. Единственный способ
+# получить с одного запроса больше 20 — сменить сортировку (см. parse()).
+_RSS_PAGE_CAP = 20
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
     "Accept": "application/rss+xml, application/xml, text/xml, */*",
@@ -43,22 +49,41 @@ class HHParser(BaseParser):
         if not self.cfg.get("enabled", True):
             return []
 
+        second_pass = self.cfg.get("second_pass", True)
         seen: set[str] = set()
         jobs: list[Job] = []
+        added_by_second = 0
+
         for query in self.cfg.get("search_queries", ["developer"]):
-            for job in self._fetch_query(query):
+            fresh = self._fetch_query(query, by_date=True)
+            for job in fresh:
                 if job.id not in seen:
                     seen.add(job.id)
                     jobs.append(job)
+
+            # Второй проход имеет смысл ТОЛЬКО для запросов, упёршихся в потолок:
+            # если выдача короче 20, обе сортировки возвращают один и тот же полный
+            # набор. Замер 15.08.2026 на 45 запросах: у всех 18 ненасыщенных запросов
+            # прирост был ровно 0, а 27 насыщенных дали +333 вакансии (+63%).
+            if second_pass and len(fresh) >= _RSS_PAGE_CAP:
+                for job in self._fetch_query(query, by_date=False):
+                    if job.id not in seen:
+                        seen.add(job.id)
+                        jobs.append(job)
+                        added_by_second += 1
+
+        if second_pass:
+            logger.info("HH: +%d вакансий вторым проходом (по релевантности)",
+                        added_by_second)
         return jobs
 
-    def _fetch_query(self, query: str) -> list[Job]:
+    def _fetch_query(self, query: str, by_date: bool = True) -> list[Job]:
         params = {
             "text": query,
             "area": self.cfg.get("area", 113),
-            "per_page": 50,
-            "order_by": "publication_time",
         }
+        if by_date:
+            params["order_by"] = "publication_time"
         try:
             # trust_env=False: hh.ru доступен напрямую из России,
             # через международный прокси — блокируется (451)

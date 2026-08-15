@@ -131,6 +131,18 @@ def run_once() -> None:
         elif best["passed_gate"] and best["score"] >= 40:
             near_miss.append((best["score"], j, best["reasons"]))
 
+    # Near-дубликаты схлопываем ДО обращения к AI. Раньше это делалось только перед
+    # отправкой (шаг 4), поэтому до Telegram копии не доходили — но каждая успевала
+    # съесть свою долю бюджета Cerebras. Замер свежей пачки 15.08.2026: Social
+    # Discovery Group ×3, Coinbase «Senior IT Automation Engineer» ×2, Kraken «Growth
+    # Workflow Manager» ×4 (две пары различались только двойным пробелом в заголовке).
+    # Место выбрано до `ai_ids`: тогда отброшенные копии попадут в mark_prefilter_seen
+    # ниже и не вернутся на следующем прогоне.
+    before_ai = len(new_jobs)
+    new_jobs = dedupe_jobs(new_jobs)
+    if before_ai != len(new_jobs):
+        logger.info("Near-дубликаты схлопнуты до AI: %d → %d", before_ai, len(new_jobs))
+
     # Провизорный seen — только детерминированно отсеянное, с отпечатком версии:
     # смена критериев переоткроет эти отказы. Кандидатов в AI помечает match_jobs
     # финальным вердиктом после успешного скоринга батча (сбой AI не теряет вакансии).
