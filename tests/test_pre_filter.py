@@ -693,7 +693,10 @@ class TestLinkedInParserParsing:
         assert len(cards) == 1
         c = cards[0]
         assert c["id"] == "4442733327"          # id из хвоста URL, не из ?position
-        assert c["title"] == "KYC &amp; Client Onboarding Analyst"
+        # HTML-сущности раскодированы: в карточке Telegram и в тексте для гейта
+        # должно быть "&", а не "&amp;" (замер воронки 15.08.2026 показал `&amp;`
+        # в заголовках LinkedIn — раньше тест фиксировал именно этот баг).
+        assert c["title"] == "KYC & Client Onboarding Analyst"
         assert c["company"] == "emoni"
         assert c["location"] == "Limassol, Cyprus"
 

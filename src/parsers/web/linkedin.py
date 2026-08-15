@@ -16,6 +16,7 @@ geoId и прочитаны локации вакансий, которые он
 - При 429 парсер делает паузу с ростом, после `_MAX_429` подряд — сдаётся и
   возвращает то, что успел собрать (пустой список вместо падения пайплайна).
 """
+import html
 import logging
 import re
 import time
@@ -53,7 +54,9 @@ _RE_WS = re.compile(r"\s+")
 
 
 def _clean(text: str) -> str:
-    return _RE_WS.sub(" ", text or "").strip()
+    # unescape ПОСЛЕ вырезания тегов (см. _description), иначе экранированный
+    # `&lt;script&gt;` превратится в настоящий тег уже после чистки.
+    return _RE_WS.sub(" ", html.unescape(text or "")).strip()
 
 
 class LinkedInParser(BaseParser):

@@ -7,6 +7,7 @@ import socket
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 import yaml
@@ -30,9 +31,18 @@ logging.basicConfig(
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler(_LOG_FILE, encoding="utf-8"),
+        # Без ротации лог рос неограниченно: 64 МБ за два месяца на диске 9.7 ГБ.
+        RotatingFileHandler(_LOG_FILE, maxBytes=5_000_000, backupCount=3,
+                            encoding="utf-8"),
     ],
 )
+
+# httpx на INFO печатает URL запроса целиком. У Telegram-бота токен лежит В URL
+# (`/bot<TOKEN>/getUpdates`), а polling идёт раз в 10 секунд — то есть секрет
+# попадал в файл лога тысячи раз в сутки. WARNING оставляет только ошибки.
+for _noisy in ("httpx", "httpcore", "telegram", "apscheduler", "urllib3"):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
 _CONFIG = Path(__file__).parent.parent / "config" / "settings.yaml"
