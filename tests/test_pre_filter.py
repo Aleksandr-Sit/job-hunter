@@ -422,7 +422,9 @@ class TestFluentEnglishGate:
         "requirements: fluent in english; mandarin proficiency is a plus",
         "native english speaker required",
         "excellent written and spoken english",
-        "english c1 required for this role",
+        # «english c1 required» переехал в TestCefrBLevel: с 17.08.2026 уровень
+        # C без пометки «устный» даёт штраф, а не отсев.
+        "english c1 required, spoken and written",
         "требования: свободный английский",
     ])
     def test_gated(self, text):
@@ -791,7 +793,9 @@ class TestCefrBLevel:
     """B1/B2 — не отсев, а штраф (решение владельца 14.08.2026: «интересно
     посмотреть, какие приходят с очень высокой оценкой»). Работодатель назвал
     уровень числом — это точнее размытого «fluent», и разрыв дотягиваем.
-    C1/C2 остаются жёстким барьером."""
+    C1/C2 БЕЗ пометки «устный» — тоже штраф (решение владельца 17.08.2026):
+    по формулировке часто нельзя понять, нужен разговорный или письменный, а
+    письменный закрывается переводчиком. Устный английский по-прежнему отсев."""
 
     @pytest.mark.parametrize("text", [
         "English B1+ (correspondence, calls, reading contracts).",
@@ -807,7 +811,16 @@ class TestCefrBLevel:
         "English at C1 level or above.",
         "English C2 required.",
     ])
-    def test_c_level_still_hard_cut(self, text):
+    def test_c_level_is_penalty_when_modality_not_stated(self, text):
+        from src.matcher.pre_filter import _english_modality, _fluent_english_required
+        assert _english_modality(text) == "level_c"
+        assert _fluent_english_required(text) is False
+
+    @pytest.mark.parametrize("text", [
+        "English C1, spoken and written.",
+        "English at C1 level; daily calls with partners.",
+    ])
+    def test_c_level_with_spoken_marker_is_cut(self, text):
         from src.matcher.pre_filter import _fluent_english_required
         assert _fluent_english_required(text) is True
 

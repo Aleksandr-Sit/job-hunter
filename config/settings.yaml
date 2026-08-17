@@ -209,6 +209,17 @@ parsers:
         id: "64276802"
       - name: "Match Systems"         # блокчейн-форензика, карьерной страницы нет
         id: "81872165"
+      # Крупные крипто-комплаенс: публикуются регулярно, роли профильные
+      # (Crypto Investigations, Global Investigator). ID проверены живым запросом
+      # 17.08.2026 — оба отдали ровно свои вакансии.
+      - name: "Chainalysis"
+        id: "10607336"
+      - name: "TRM Labs"
+        id: "18742807"
+      # НЕ добавлять сюда Elliptic и Merkle Science — они уже приходят парсерами
+      # Ashby и Lever, слежка их продублирует и сожжёт лимит на описания.
+      # Web3 Tech в LinkedIn найти не удалось: слаги web3tech и web3-technologies
+      # принадлежат ДРУГИМ компаниям («WEB3» и «Web3 Consulting»), проверено.
 
     # Замер 06.08.2026: NOT ухудшает выдачу и на LinkedIn (как и на HH) — на Кипре
     # с NOT пропали «Customer Support Specialist» и «KYC & Client Onboarding

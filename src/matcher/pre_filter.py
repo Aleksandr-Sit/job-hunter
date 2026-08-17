@@ -253,6 +253,35 @@ _EN_AND_RU = re.compile(
 # 14.08.2026: «переведи B1-B2 в штраф, интересно посмотреть, какие приходят с
 # очень высокой оценкой»).
 _CEFR_B_LEVEL = re.compile(r'\bb[12]\+?\b', re.IGNORECASE)
+_CEFR_C_LEVEL = re.compile(r'\bc[12]\+?\b', re.IGNORECASE)
+
+
+# Граница ПУНКТА — уже, чем _SENTENCE_BREAK: точка с запятой обычно разделяет части
+# одного требования («English at C1 level; daily calls with partners»), а не разные
+# требования, и резать по ней — потерять модальность, которая рядом. Отдельные
+# пункты разделяются точкой, буллетом или переводом строки.
+_REQUIREMENT_BREAK = re.compile(r"[.•·\n]")
+
+
+def _requirement_window(blob: str, start: int, end: int, span: int = 90) -> str:
+    """Окно вокруг требования, обрезанное по границе пункта.
+
+    Модальность нельзя брать из СОСЕДНЕГО требования. Найдено 17.08.2026 на
+    вакансии Synergy of Lake Technology: в окно попадало «отличные навыки ведения
+    переговоров» — отдельный пункт двумя строками выше, — и «Английский С1»
+    получал модальность spoken. Хотя поддержка в этой вакансии прямым текстом
+    описана как текстовая (email, чаты, соцсети), а про устный английский там
+    не сказано ничего.
+    """
+    head = blob[max(0, start - span): start]
+    tail = blob[end: end + span]
+    breaks = list(_REQUIREMENT_BREAK.finditer(head))
+    if breaks:
+        head = head[breaks[-1].end():]
+    nxt = _REQUIREMENT_BREAK.search(tail)
+    if nxt:
+        tail = tail[:nxt.start()]
+    return head + blob[start:end] + tail
 
 _WRITTEN_MARKERS = re.compile(
     r'\b(written|writing|correspondence|documentation)\b|письмен\w*|переписк\w*',
@@ -292,19 +321,27 @@ def _english_modality(blob: str) -> str | None:
             continue
         if _in_optional_section(blob, m.start()):
             continue
-        # Модальность ищем в окне вокруг самого требования, а не по всей вакансии:
-        # «созвоны с командой» в разделе про условия не делают английский устным.
-        window = blob[max(0, m.start() - 90): m.end() + 90]
+        # Модальность ищем в окне вокруг самого требования, обрезанном по границе
+        # пункта: соседнее требование про английский ничего не говорит.
+        window = _requirement_window(blob, m.start(), m.end())
         # Уровень ищем и в хвосте: «fluent russian and english» съедает слово
         # English, и отдельный шаблон «english level b2» уже не срабатывает —
         # finditer не даёт пересекающихся совпадений.
-        if _CEFR_B_LEVEL.search(m.group(0) + " " + blob[m.end(): m.end() + 30]):
+        tail30 = m.group(0) + " " + blob[m.end(): m.end() + 30]
+        if _CEFR_B_LEVEL.search(tail30):
             # Работодатель назвал уровень числом — верим ему, а не окружающим
             # словам. Если в вакансии есть ОТДЕЛЬНОЕ требование устного
             # английского, оно даст свой матч и победит по строгости ниже.
             found.add("level_b")
         elif _SPOKEN_MARKERS.search(window):
             found.add("spoken")
+        elif _CEFR_C_LEVEL.search(tail30):
+            # C1/C2 БЕЗ пометки про устный. Решение владельца 17.08.2026: жёстко
+            # не резать. Разговорный английский закрыт, а письменный C1 частично
+            # закрывается переводчиком и AI — такие вакансии не приоритет, но
+            # рассматривать их можно. Поэтому штраф, а не отсев.
+            # Если устный английский заявлен явно, ветка выше уже дала "spoken".
+            found.add("level_c")
         elif _WRITTEN_MARKERS.search(window):
             found.add("written")
         else:
@@ -312,7 +349,10 @@ def _english_modality(blob: str) -> str | None:
     # Названный числом уровень важнее размытого прилагательного рядом:
     # «Fluent Russian and English level B2» — верим «B2», а не «fluent».
     # Но явное требование УСТНОГО английского перебивает и его.
-    for level in ("spoken", "level_b", "generic", "written"):
+    # Порядок = «кто побеждает, если в вакансии несколько упоминаний».
+    # Устный перебивает всё. Дальше — названный числом уровень важнее размытого
+    # прилагательного (C строже B), и только потом безликое «fluent English».
+    for level in ("spoken", "level_c", "level_b", "generic", "written"):
         if level in found:
             return level
     return None
@@ -744,6 +784,11 @@ def score_vacancy(title: str, text: str, role_key: str) -> dict:
         sub = int(_W.get("english_level_b", -6) * ew)
         score += sub
         reasons.append(f"{sub} требуется английский B1–B2 (у кандидата A1–A2)")
+    elif _mod == "level_c" and "level_c" not in _ENGLISH_GATE_LEVELS:
+        sub = int(_W.get("english_level_c", -10) * ew)
+        score += sub
+        reasons.append(f"{sub} требуется английский C1–C2 без пометки «устный» "
+                       f"(разрыв большой — не приоритет, но рассмотреть можно)")
 
     # Entry/junior/обучающие роли — целевой сегмент кандидата (низкий барьер)
     if _hits(CRITERIA.get("entry_boost", []), blob)[0]:

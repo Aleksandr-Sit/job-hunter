@@ -31,19 +31,26 @@ class TestHomoglyphNormalisation:
         assert _n("артикул с12345") == "артикул с12345"
 
 
-class TestGateCatchesCyrillicLevel:
-    def test_c1_cyrillic_is_gated(self):
-        # Дословная строка из вакансии, на которой баг и нашёлся.
+class TestGateSeesCyrillicLevel:
+    """Главное — что уровень вообще ОПОЗНАЁТСЯ. Резать его или штрафовать —
+    отдельное решение (см. test_level_c_and_window.py): с 17.08.2026 C1/C2 без
+    пометки «устный» даёт штраф, а не отсев."""
+
+    def test_c1_cyrillic_is_recognised(self):
+        # Дословные строки из вакансии, на которой баг и нашёлся.
         for s in ("Английский С1 и выше.",
                   "Английский язык — С1",
                   "английский: С2",
                   "Английский уровня С1"):
-            assert _fluent_english_required(_n(s)), s
+            assert _english_modality(_n(s)) == "level_c", s
 
-    def test_c1_latin_still_gated(self):
-        # Регрессия: то, что работало до правки, должно работать и после.
-        assert _fluent_english_required(_n("Английский C1"))
-        assert _fluent_english_required(_n("English at C1 level or above."))
+    def test_c1_latin_recognised_the_same(self):
+        assert _english_modality(_n("Английский C1")) == "level_c"
+        assert _english_modality(_n("English at C1 level or above.")) == "level_c"
+
+    def test_cyrillic_c1_with_spoken_marker_is_gated(self):
+        # Устный английский закрыт наглухо — кириллица тут ничего не меняет.
+        assert _fluent_english_required(_n("Английский С1, устный и письменный."))
 
     def test_b_level_cyrillic_is_penalty_not_gate(self):
         # B1-B2 — штраф, а не отсев (решение владельца 14.08.2026).
