@@ -54,3 +54,34 @@ class TestPromoPost:
                   "hiring: customer support specialist, remote, crypto",
                   "требуется оператор поддержки, график 5/2"):
             assert not _is_promo_post(s), s
+
+
+class TestTagsOnlyLines:
+    """Строка из одних хэштегов — рубрикатор канала, а не название вакансии.
+
+    Замер 17.08.2026: заголовком становилось «SalesManager» из тега, и 42 поста
+    из 232 (18%) схлопывались дедупом — ключ строится из company+title, а канал
+    и тег у разных вакансий одинаковые.
+    """
+
+    def test_hashtag_block_is_skipped(self):
+        lines = ["#Вакансия", "#SalesManager", "#Sales", "#Payments", "#Remote",
+                 "Требуется Sales Manager в PayPort"]
+        assert _pick_title(lines) == "Требуется Sales Manager в PayPort"
+
+    def test_tags_on_one_line_also_skipped(self):
+        lines = ["#Вакансия #SupportManager #Remote #Удаленно",
+                 "Ищем оператора поддержки в криптобиржу"]
+        assert _pick_title(lines) == "Ищем оператора поддержки в криптобиржу"
+
+    def test_mixed_line_keeps_the_text(self):
+        # «#Вакансия Support Manager в Bybit» — тег и текст в одной строке.
+        # Строку не выбрасываем: решётка срезается, содержательная часть остаётся.
+        # Слово «Вакансия» в начале мириться можно — важно, что заголовок читаем
+        # и РАЗЛИЧИМ (именно неразличимость ломала дедуп).
+        t = _pick_title(["#Вакансия Support Manager в Bybit"])
+        assert "Support Manager в Bybit" in t
+
+    def test_falls_back_when_post_is_only_tags(self):
+        # Пост целиком из тегов — заголовок пустым быть не должен.
+        assert _pick_title(["#Вакансия", "#Remote"]) != ""

@@ -100,9 +100,21 @@ def _generic_header(cleaned: str) -> bool:
     return cleaned.lower().strip(" :：-–—.!") in _GENERIC_HEADER
 
 
+# Строка ЦЕЛИКОМ из хэштегов — это рубрикатор канала, а не название вакансии.
+# Типовой пост: «#Вакансия / #SalesManager / #Sales / #Payments / #Remote», и только
+# потом «Требуется Sales Manager в PayPort». Раньше заголовком становилось
+# «SalesManager»: `_clean_title` срезал решётку, и оставалось 11 букв — порога в
+# 8 букв хватало. Замер 17.08.2026: из-за этого 42 поста из 232 (18%) схлопывались
+# дедупом в один — ключ дедупа строится из company+title, а канал и тег у разных
+# вакансий совпадают.
+_TAGS_ONLY_LINE = re.compile(r'^(?:[#＃][\w\-]+[\s,;|·•]*)+$', re.UNICODE)
+
+
 def _pick_title(lines: list[str]) -> str:
     """Первая содержательная строка (≥8 букв, не общий заголовок), а не эмодзи/хэштег."""
     for line in lines:
+        if _TAGS_ONLY_LINE.match(line.strip()):
+            continue
         cleaned = _clean_title(line)
         if sum(ch.isalpha() for ch in cleaned) >= 8 and not _generic_header(cleaned):
             return cleaned[:120]
