@@ -161,6 +161,10 @@ parsers:
       - { slug: "turnkey",         name: "Turnkey" }
       # Добавлены по данным (SOURCES_AUDIT §9, проба fetch'ем с VPS 13.07)
       - { slug: "elliptic",        name: "Elliptic" }        # blockchain compliance, CSM
+      # Проба fetch'ем 17.08.2026: 125 вакансий, из них 17 профильных
+      # (Global Investigator, All-Source Intelligence Analyst). Через Ashby надёжнее,
+      # чем слежкой по LinkedIn: приходит полное описание, а не только карточка.
+      - { slug: "trm-labs",        name: "TRM Labs" }        # блокчейн-разведка, AML
       - { slug: "notabene",        name: "Notabene" }        # travel-rule, customer success
 
   lever:
@@ -212,12 +216,11 @@ parsers:
       # Крупные крипто-комплаенс: публикуются регулярно, роли профильные
       # (Crypto Investigations, Global Investigator). ID проверены живым запросом
       # 17.08.2026 — оба отдали ровно свои вакансии.
-      - name: "Chainalysis"
+      - name: "Chainalysis"         # свой ATS: на Greenhouse/Lever/Ashby их нет
         id: "10607336"
-      - name: "TRM Labs"
-        id: "18742807"
-      # НЕ добавлять сюда Elliptic и Merkle Science — они уже приходят парсерами
-      # Ashby и Lever, слежка их продублирует и сожжёт лимит на описания.
+      # НЕ добавлять сюда Elliptic, Merkle Science и TRM Labs — они уже приходят
+      # парсерами Ashby и Lever с полным описанием. Слежка их продублирует и
+      # сожжёт лимит на описания (TRM Labs переведён в ashby 17.08.2026).
       # Web3 Tech в LinkedIn найти не удалось: слаги web3tech и web3-technologies
       # принадлежат ДРУГИМ компаниям («WEB3» и «Web3 Consulting»), проверено.
 
