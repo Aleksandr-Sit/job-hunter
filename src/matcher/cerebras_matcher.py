@@ -27,6 +27,13 @@ class _AIGeoBlockError(Exception):
 _PROFILE_DIR = Path(__file__).parent.parent.parent / "config" / "profile"
 _MATCHES_JSONL = Path(__file__).parent.parent.parent / "data" / "matches.jsonl"
 _BATCH_SIZE = 5
+
+# Итог последнего вызова match_jobs. Нужен алерту «ноль вакансий»: без него
+# сбой провайдера (402/403) неотличим от «AI оценил ниже порога», и алерт
+# называет ложную причину — 18.08.2026 квота Cerebras кончилась, а в Telegram
+# ушло «AI оценил ниже порога».
+last_run_stats: dict[str, int] = {"batches": 0, "failed_batches": 0, "unscored": 0}
+
 _CEREBRAS_TIMEOUT = 30      # секунды ожидания ответа API
 _CEREBRAS_MAX_RETRY = 3     # попытки при 429/5xx
 _CEREBRAS_RETRY_SLEEP = 20  # секунды между попытками
@@ -331,6 +338,7 @@ def match_jobs(jobs: list[Job], threshold: int = 65, batch_size: int = _BATCH_SI
 
     fresh_results: list[tuple[Job, MatchResult]] = []
     total_batches = (len(to_match) + batch_size - 1) // batch_size
+    last_run_stats.update(batches=total_batches, failed_batches=0, unscored=0)
     for i in range(0, len(to_match), batch_size):
         batch_idx = i // batch_size + 1
         if i > 0:
@@ -340,10 +348,17 @@ def match_jobs(jobs: list[Job], threshold: int = 65, batch_size: int = _BATCH_SI
         try:
             results = match_batch(batch, client)
         except _AIGeoBlockError:
-            break  # 403 — прекращаем все батчи; неотмеченные вернутся в след. прогон
+            # 403 — прекращаем все батчи; неотмеченные вернутся в след. прогон.
+            # В сбой засчитываем и текущий батч, и все, до которых не дошли.
+            remaining = to_match[i:]
+            last_run_stats["failed_batches"] += total_batches - batch_idx + 1
+            last_run_stats["unscored"] += len(remaining)
+            break
         if results is None:
             logger.error("Batch %d/%d failed — %d jobs left unseen, will retry next run",
                          batch_idx, total_batches, len(batch))
+            last_run_stats["failed_batches"] += 1
+            last_run_stats["unscored"] += len(batch)
             continue
         storage.mark_seen_batch(batch)
         with _MATCHES_JSONL.open("a", encoding="utf-8") as f:

@@ -71,10 +71,25 @@ def _send_zero_alert(total: int, unseen: int, prefiltered: int, matched: int, th
     ts = datetime.now(timezone.utc).strftime("%H:%M UTC")
     lines = [f"🔍 <b>Прогон {ts} — вакансий не отправлено</b>"]
     lines.append(f"Собрано: {total} | Новых: {unseen} | Pre-filter: {prefiltered} | AI ≥{threshold}%: {matched}")
+    from .matcher.cerebras_matcher import last_run_stats
+    failed = last_run_stats.get("failed_batches", 0)
     if unseen == 0:
         lines.append("Причина: все уже видели раньше (дедуп)")
     elif prefiltered == 0:
         lines.append("Причина: ни одна не прошла pre-filter (роль/домен/стоп-слова)")
+    elif failed and failed >= last_run_stats.get("batches", 0):
+        # AI не ответил вообще — «оценил ниже порога» было бы ложной причиной
+        lines.append(
+            f"⚠️ Причина: <b>AI недоступен</b> — упали все {failed} батчей, "
+            f"{last_run_stats.get('unscored', 0)} вакансий не оценены."
+        )
+        lines.append("Проверь квоту/ключ Cerebras. Вакансии не потеряны — пересчитаются.")
+    elif failed:
+        lines.append(
+            f"Причина: AI оценил ниже порога. ⚠️ Но {failed} из "
+            f"{last_run_stats.get('batches', 0)} батчей упали "
+            f"({last_run_stats.get('unscored', 0)} вакансий не оценены)."
+        )
     else:
         lines.append("Причина: AI оценил ниже порога")
     send_text("\n".join(lines))
