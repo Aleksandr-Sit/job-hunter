@@ -179,6 +179,13 @@ office-only in a location outside Russia/Cyprus/Greece/Thailand/Turkey/Armenia/
 UAE/Serbia; for AI-automation roles, requiring years of professional ML/SWE
 experience, a CS degree, or research-scientist-level depth.
 
+NIGHT SHIFTS: if the listing mentions night shifts, overnight work, a 24/7 duty
+rota or a 2/2 twelve-hour schedule, you MUST say so explicitly in watch_out and
+cut the score hard — even "2-4 night shifts per month" is a serious drawback for
+this candidate. A schedule built around night or evening shifts is close to a
+dealbreaker: score it below 50. He must never learn about night shifts only
+after opening the listing.
+
 Do NOT penalise a job merely for being a sales role. Penalise only the cold
 outbound part described above. Sales on inbound leads, account management,
 customer success and upselling to existing clients match the candidate's
@@ -266,10 +273,13 @@ def _build_profile_text() -> str:
     skills = _read_profile_file("skills.json")
     prefs_raw = json.loads(_read_profile_file("preferences.json"))
 
-    # Только поля, нужные для матчинга (убираем locations_ok, employment_type и т.д.)
+    # Только поля, нужные для матчинга (убираем locations_ok, employment_type и т.д.).
+    # «schedule» добавлен 19.08.2026: без него модель не знала про ночные смены и
+    # ставила вакансии с ними 70+, не упоминая график даже в watch_out. Добавляя
+    # сюда новый ключ, помни: этот текст входит в _scoring_version.
     prefs_compact = {k: prefs_raw[k] for k in (
         "roles", "salary", "tech_stack_must", "tech_stack_nice",
-        "experience_level", "english_level", "notes",
+        "experience_level", "english_level", "schedule", "notes",
     ) if k in prefs_raw}
 
     return (
@@ -345,7 +355,11 @@ def match_batch(jobs: list[Job], client: Optional[OpenAI] = None,
 
     model_name = provider.model
     profile_text = _build_profile_text()
-    jobs_text = "\n\n---\n\n".join(f"JOB ID: {j.id}\n{j.to_text()}" for j in jobs)
+    # schedule_note читает ПОЛНОЕ описание: to_text() отдаёт только начало и конец,
+    # а требование про смены обычно стоит ровно в выброшенной середине.
+    from ..parsers.normalize import schedule_note
+    jobs_text = "\n\n---\n\n".join(
+        f"JOB ID: {j.id}\n{j.to_text()}{schedule_note(j.description)}" for j in jobs)
 
     prompt = (
         f"CANDIDATE PROFILE:\n{profile_text}\n\n"

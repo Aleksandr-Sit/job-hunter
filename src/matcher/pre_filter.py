@@ -363,6 +363,60 @@ def _fluent_english_required(blob: str) -> bool:
     return _english_modality(blob) in _ENGLISH_GATE_LEVELS
 
 
+# ── 3b. Ночные смены и сменный график ─────────────────────────────────────────
+# Решение владельца 19.08.2026: ночные смены как РЕЖИМ работы — жёсткий отсев,
+# редкие ночи и сменный график — штраф. Поводом стали две вакансии, приехавшие
+# 19.08: «Специалист поддержки» Контура («вечерние или ночные смены») и
+# «PSP Support Agent» SOFTSWISS («2/2 shift schedule, 2–4 night shifts per month»).
+
+# Считанные ночи в месяц — это не режим, а исключение. Проверяется ПЕРВЫМ,
+# иначе «2–4 night shifts per month» попадёт под жёсткий отсев ниже.
+_NIGHT_OCCASIONAL = re.compile(
+    r'\d{1,2}\s*[-–—]?\s*\d{0,2}\s*night\s+shifts?\s+(?:per|a|/)\s*month|'
+    r'\d{1,2}\s*[-–—]?\s*\d{0,2}\s*ночн\w*\s+смен\w*\s+в\s+месяц|'
+    r'occasional\w*\s+night|'
+    r'иногда\s+ночн|редк\w*\s+ночн',
+    re.IGNORECASE,
+)
+
+# Ночь как штатный режим.
+_NIGHT_CORE = re.compile(
+    r'ночн\w*\s+смен|ночн\w*\s+график|в\s+ночную\s+смену|'
+    r'работа\s+в\s+ночн\w*|ночн\w*\s+врем\w*\s+сут|'
+    r'night\s+shift|graveyard\s+shift|overnight\s+shift|'
+    r'сутки\s+через',          # суточный график ночь включает по определению
+    re.IGNORECASE,
+)
+
+# Сменный график без ночей. «5/2» СЮДА НЕ ПОПАДАЕТ намеренно — это обычная
+# пятидневка, а не сменная работа; штрафовать её значило бы срезать половину
+# нормальных вакансий. Числовое отношение считается только рядом со словом
+# про график, иначе regex ловит дроби и даты.
+_SHIFT_SCHEDULE = re.compile(
+    r'сменн\w*\s+график|график\w*\s+сменн|сменн\w*\s+работ|посменн|'
+    r'shift\s+schedule|rotating\s+shifts?|rotational\s+shift|shift\s+work|'
+    r'(?:график|режим|schedule|shift)\D{0,20}\b[1-4]\s*/\s*[1-4]\b|'
+    r'\b[1-4]\s*/\s*[1-4]\b\D{0,20}(?:смен|shift|график)',
+    re.IGNORECASE,
+)
+
+
+def _night_shift_mode(blob: str) -> str | None:
+    """Как в вакансии устроены смены: 'core' | 'occasional' | 'shift' | None.
+
+    'core'       — ночь штатный режим -> жёсткий отсев;
+    'occasional' — считанные ночи в месяц -> штраф;
+    'shift'      — сменный график без ночей -> меньший штраф.
+    """
+    if _NIGHT_OCCASIONAL.search(blob):
+        return "occasional"
+    if _NIGHT_CORE.search(blob):
+        return "core"
+    if _SHIFT_SCHEDULE.search(blob):
+        return "shift"
+    return None
+
+
 # ── 4. Иностранные языки (кроме ru/en) ────────────────────────────────────────
 _FOREIGN_LANG_PATTERN = re.compile(
     r'\b(chinese|mandarin|cantonese|deutsch|german|french|français|spanish|español|'
@@ -657,6 +711,9 @@ def _extra_hard_gates(title: str, text: str, role_key: str) -> str | None:
         what = "разговорный" if modality == "spoken" else "свободный"
         return f"требуется {what} английский (у кандидата A1–A2)"
 
+    if _night_shift_mode(blob) == "core":
+        return "ночные смены как режим работы"
+
     return None
 
 
@@ -793,6 +850,18 @@ def score_vacancy(title: str, text: str, role_key: str) -> dict:
     # Entry/junior/обучающие роли — целевой сегмент кандидата (низкий барьер)
     if _hits(CRITERIA.get("entry_boost", []), blob)[0]:
         score += _W["entry"]; reasons.append(f"+{_W['entry']} entry/junior (низкий барьер)")
+
+    # Смены. Ночь как режим сюда не доходит — она отсечена в hard gate выше.
+    shift_mode = _night_shift_mode(blob)
+    if shift_mode == "occasional":
+        sub = _W.get("night_shift_occasional", -15)
+        score += sub
+        reasons.append(f"{sub} редкие ночные смены (владелец их не хочет, "
+                       f"но при сильной вакансии решает сам)")
+    elif shift_mode == "shift":
+        sub = _W.get("shift_schedule", -8)
+        score += sub
+        reasons.append(f"{sub} сменный график")
 
     score = max(0, min(100, score))
     return {

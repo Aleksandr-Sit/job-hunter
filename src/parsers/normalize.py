@@ -71,6 +71,27 @@ def detect_remote(
     return bool(explicit_flag)
 
 
+def schedule_note(description: str | None) -> str:
+    """Пометка про смены для промпта AI, если они найдены в ПОЛНОМ описании.
+
+    Нужна по той же причине, что и `onsite_note`, только острее: в промпт уходит
+    начало и конец описания, а середина выбрасывается (`_sample_description`).
+    У вакансии SOFTSWISS 19.08.2026 фраза «2–4 night shifts per month» стояла на
+    позиции 2183 из 3245 — ровно в выброшенной середине, и модель про ночные
+    смены не знала вообще, сколько её об этом ни инструктируй.
+    """
+    from ..matcher.pre_filter import _n, _night_shift_mode  # локальный импорт: циклы
+
+    mode = _night_shift_mode(_n(description or ""))
+    if mode == "core":
+        return "\nSchedule: NIGHT SHIFTS are part of the regular working pattern."
+    if mode == "occasional":
+        return "\nSchedule: the listing mentions occasional NIGHT SHIFTS (a few per month)."
+    if mode == "shift":
+        return "\nSchedule: rotating/shift work (no night shifts stated)."
+    return ""
+
+
 def onsite_note(workplace_type: str | None) -> str:
     """Строка-пометка для описания, если ATS явно говорит про офис/гибрид.
 

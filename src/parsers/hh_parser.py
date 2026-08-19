@@ -15,6 +15,7 @@ from bs4 import BeautifulSoup
 
 from ..models import MAX_DESCRIPTION_CHARS, Job
 from .base import BaseParser
+from .normalize import detect_remote
 
 logger = logging.getLogger(__name__)
 
@@ -152,10 +153,11 @@ class HHParser(BaseParser):
                 if "не указан" not in low:
                     salary_min, salary_max, salary_currency = self._parse_salary(line)
 
-        is_remote = any(
-            w in desc_text.lower()
-            for w in ["удалённо", "удаленно", "remote", "дистанционно"]
-        )
+        # Формат работы — только через общий модуль. Своя проверка здесь ловила
+        # одиночное «удалённо»/«remote» в любом месте текста, и офисная вакансия
+        # («удалённая консультация», «remote access») проходила как удалённая:
+        # так 19.08.2026 приехал «Специалист поддержки» из Екатеринбурга.
+        is_remote = detect_remote(location=location, description=desc_text)
 
         return Job(
             id=f"hh_{vacancy_id}",
