@@ -1,12 +1,20 @@
 """
-Batch matcher на базе Cerebras (бесплатно без карты, OpenAI-совместимый).
-Модель берётся из .env (CEREBRAS_MODEL); прод использует gpt-oss-120b.
-Ключ: cloud.cerebras.ai → API Keys → Create key.
+Batch matcher поверх любого OpenAI-совместимого провайдера.
+
+Провайдеров можно перечислить несколько: при отказе одного (кончилась квота,
+отозван ключ, гео-блок) матчер сам переходит к следующему. Повод — 18.08.2026:
+у Cerebras кончилась квота, провайдер был единственный, и бот двое суток не
+оценивал вакансии.
+
+Порядок берётся из AI_PROVIDER_ORDER (через запятую), по умолчанию
+"openrouter,cerebras". Провайдер участвует, только если задан его ключ,
+поэтому лишние можно просто не прописывать в .env.
 """
 import json
 import logging
 import os
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
@@ -20,8 +28,71 @@ from ..models import Job, MatchResult
 logger = logging.getLogger(__name__)
 
 
-class _AIGeoBlockError(Exception):
-    """Raised when AI provider returns 403 — stops processing all remaining batches."""
+class _ProviderDeadError(Exception):
+    """Провайдер отказал целиком (401/402/403), а не на одном батче.
+
+    Означает «переключись на следующего», а не «прекрати работу»: остальные
+    провайдеры могут быть живы.
+    """
+
+
+@dataclass(frozen=True)
+class Provider:
+    """OpenAI-совместимый эндпоинт. Ключ и модель читаются из окружения."""
+    name: str
+    base_url: str
+    key_env: str
+    model_env: str
+    default_model: str
+
+    @property
+    def api_key(self) -> str | None:
+        return os.environ.get(self.key_env)
+
+    @property
+    def model(self) -> str:
+        return os.environ.get(self.model_env) or self.default_model
+
+
+# Реестр. Добавить нового — одна строка здесь + ключ в .env, код не трогается.
+_PROVIDER_REGISTRY: dict[str, Provider] = {
+    "openrouter": Provider("openrouter", "https://openrouter.ai/api/v1",
+                           "OPENROUTER_API_KEY", "OPENROUTER_MODEL",
+                           "deepseek/deepseek-chat"),
+    "cerebras":   Provider("cerebras", "https://api.cerebras.ai/v1",
+                           "CEREBRAS_API_KEY", "CEREBRAS_MODEL",
+                           "gpt-oss-120b"),
+    "groq":       Provider("groq", "https://api.groq.com/openai/v1",
+                           "GROQ_API_KEY", "GROQ_MODEL",
+                           "llama-3.3-70b-versatile"),
+    "deepseek":   Provider("deepseek", "https://api.deepseek.com/v1",
+                           "DEEPSEEK_API_KEY", "DEEPSEEK_MODEL",
+                           "deepseek-chat"),
+    "proxyapi":   Provider("proxyapi", "https://api.proxyapi.ru/openai/v1",
+                           "PROXYAPI_API_KEY", "PROXYAPI_MODEL",
+                           "gpt-4o-mini"),
+}
+
+_DEFAULT_ORDER = "openrouter,cerebras"
+
+
+def available_providers() -> list[Provider]:
+    """Провайдеры по порядку из AI_PROVIDER_ORDER, у которых задан ключ."""
+    order = os.environ.get("AI_PROVIDER_ORDER", _DEFAULT_ORDER)
+    out: list[Provider] = []
+    for raw in order.split(","):
+        name = raw.strip().lower()
+        if not name:
+            continue
+        p = _PROVIDER_REGISTRY.get(name)
+        if p is None:
+            logger.warning("AI_PROVIDER_ORDER: неизвестный провайдер %r — пропущен", name)
+            continue
+        if not p.api_key:
+            logger.debug("Провайдер %s пропущен: %s не задан", name, p.key_env)
+            continue
+        out.append(p)
+    return out
 
 
 _PROFILE_DIR = Path(__file__).parent.parent.parent / "config" / "profile"
@@ -32,7 +103,11 @@ _BATCH_SIZE = 5
 # сбой провайдера (402/403) неотличим от «AI оценил ниже порога», и алерт
 # называет ложную причину — 18.08.2026 квота Cerebras кончилась, а в Telegram
 # ушло «AI оценил ниже порога».
-last_run_stats: dict[str, int] = {"batches": 0, "failed_batches": 0, "unscored": 0}
+last_run_stats: dict[str, object] = {
+    "batches": 0, "failed_batches": 0, "unscored": 0,
+    "provider": "",   # кто в итоге оценил
+    "switched": 0,    # 1, если пришлось переключаться на запасного
+}
 
 _CEREBRAS_TIMEOUT = 30      # секунды ожидания ответа API
 _CEREBRAS_MAX_RETRY = 3     # попытки при 429/5xx
@@ -211,33 +286,61 @@ def _detect_local_proxy(host: str = "127.0.0.1", port: int = 10808) -> str | Non
         return None
 
 
-def _get_client() -> OpenAI:
-    api_key = os.environ.get("CEREBRAS_API_KEY")
-    if not api_key:
-        raise ValueError("CEREBRAS_API_KEY not set in .env")
+def _get_client(provider: Optional[Provider] = None) -> OpenAI:
+    """Клиент для провайдера. Без аргумента — первый доступный по порядку."""
+    if provider is None:
+        providers = available_providers()
+        if not providers:
+            raise ValueError(
+                "Не задан ни один ключ AI-провайдера. Пропиши в .env хотя бы "
+                "OPENROUTER_API_KEY или CEREBRAS_API_KEY."
+            )
+        provider = providers[0]
+
+    if not provider.api_key:
+        raise ValueError(f"{provider.key_env} not set in .env")
 
     proxy_url = _detect_local_proxy()
-    kwargs: dict = {
-        "api_key": api_key,
-        "base_url": "https://api.cerebras.ai/v1",
-    }
+    kwargs: dict = {"api_key": provider.api_key, "base_url": provider.base_url}
     if proxy_url:
         import httpx
-        logger.debug("Cerebras: routing via proxy %s", proxy_url)
+        logger.debug("%s: routing via proxy %s", provider.name, proxy_url)
         kwargs["http_client"] = httpx.Client(proxy=proxy_url, timeout=_CEREBRAS_TIMEOUT)
     return OpenAI(**kwargs)
 
 
-def match_batch(jobs: list[Job], client: Optional[OpenAI] = None) -> Optional[list[MatchResult]]:
+def _is_provider_dead(err: str) -> bool:
+    """Отказ провайдера целиком, а не сбой одного батча.
+
+    402 — кончилась квота (Cerebras, 18.08.2026), 401 — ключ отозван,
+    403 — гео-блок. Повторять запрос к этому же провайдеру бессмысленно:
+    следующий батч упрётся в то же самое.
+    """
+    low = err.lower()
+    return (
+        "402" in err or "payment_required" in low or "insufficient" in low
+        or "401" in err or "unauthorized" in low or "invalid_api_key" in low
+        or "403" in err or "access denied" in low
+    )
+
+
+def match_batch(jobs: list[Job], client: Optional[OpenAI] = None,
+                provider: Optional[Provider] = None) -> Optional[list[MatchResult]]:
     """Возвращает список результатов, либо None при сбое API/парсинга ответа.
-    None означает «батч НЕ оценён» — вызывающий не должен считать это отказом."""
+
+    None означает «батч НЕ оценён» — вызывающий не должен считать это отказом.
+    _ProviderDeadError означает «этот провайдер отказал целиком» — вызывающий
+    должен переключиться на следующего, а не бросать батч."""
     if not jobs:
         return []
 
+    if provider is None:
+        providers = available_providers()
+        provider = providers[0] if providers else _PROVIDER_REGISTRY["cerebras"]
     if client is None:
-        client = _get_client()
+        client = _get_client(provider)
 
-    model_name = os.environ.get("CEREBRAS_MODEL", "gpt-oss-120b")
+    model_name = provider.model
     profile_text = _build_profile_text()
     jobs_text = "\n\n---\n\n".join(f"JOB ID: {j.id}\n{j.to_text()}" for j in jobs)
 
@@ -263,19 +366,18 @@ def match_batch(jobs: list[Job], client: Optional[OpenAI] = None) -> Optional[li
             break
         except Exception as e:
             err_str = str(e)
-            is_geo_block = "403" in err_str or "access denied" in err_str.lower() or "unauthorized" in err_str.lower()
+            if _is_provider_dead(err_str):
+                logger.error("Провайдер %s отказал целиком: %s", provider.name, err_str[:200])
+                raise _ProviderDeadError(provider.name) from e
             is_rate_limit = "429" in err_str or "rate_limit" in err_str.lower()
-            is_server_err = "5" in err_str[:3] or "503" in err_str or "502" in err_str
-            if is_geo_block:
-                logger.error("Cerebras blocked (403). Check CEREBRAS_API_KEY. Skipping all batches.")
-                raise _AIGeoBlockError() from e
+            is_server_err = any(c in err_str for c in ("500", "502", "503", "504"))
             if (is_rate_limit or is_server_err) and attempt < _CEREBRAS_MAX_RETRY:
                 wait = _CEREBRAS_RETRY_SLEEP * attempt
-                logger.warning("Cerebras attempt %d/%d failed (%s). Retrying in %ds…",
-                               attempt, _CEREBRAS_MAX_RETRY, e, wait)
+                logger.warning("%s: попытка %d/%d не удалась (%s). Повтор через %dс…",
+                               provider.name, attempt, _CEREBRAS_MAX_RETRY, e, wait)
                 time.sleep(wait)
             else:
-                logger.error("Cerebras error (attempt %d): %s", attempt, e)
+                logger.error("%s: ошибка (попытка %d): %s", provider.name, attempt, e)
                 return None
 
     if raw is None:
@@ -306,7 +408,7 @@ def match_batch(jobs: list[Job], client: Optional[OpenAI] = None) -> Optional[li
         except (KeyError, ValueError) as e:
             logger.warning("Skipping malformed match item: %s", e)
 
-    logger.info("Batch matched %d jobs via Cerebras", len(results))
+    logger.info("Батч оценён: %d вакансий через %s", len(results), provider.name)
     return results
 
 
@@ -314,8 +416,18 @@ def match_jobs(jobs: list[Job], threshold: int = 65, batch_size: int = _BATCH_SI
     """Матчит все вакансии батчами, возвращает только те что >= threshold.
 
     Помечает вакансии seen только ПОСЛЕ вердикта (кэш или успешный батч):
-    сбойный батч остаётся неотмеченным и вернётся на следующем прогоне."""
-    client = _get_client()
+    сбойный батч остаётся неотмеченным и вернётся на следующем прогоне.
+
+    Провайдеров перебирает по порядку: отказавший (402/401/403) исключается
+    до конца прогона, батч тут же повторяется на следующем."""
+    providers = available_providers()
+    if not providers:
+        raise ValueError(
+            "Не задан ни один ключ AI-провайдера. Пропиши в .env хотя бы "
+            "OPENROUTER_API_KEY или CEREBRAS_API_KEY."
+        )
+    logger.info("AI-провайдеры: %s", ", ".join(f"{p.name}({p.model})" for p in providers))
+    clients: dict[str, OpenAI] = {}
     version = _scoring_version()
 
     to_match: list[Job] = []
@@ -338,25 +450,44 @@ def match_jobs(jobs: list[Job], threshold: int = 65, batch_size: int = _BATCH_SI
 
     fresh_results: list[tuple[Job, MatchResult]] = []
     total_batches = (len(to_match) + batch_size - 1) // batch_size
-    last_run_stats.update(batches=total_batches, failed_batches=0, unscored=0)
+    last_run_stats.update(batches=total_batches, failed_batches=0, unscored=0,
+                          provider="", switched=0)
+    dead: set[str] = set()
+
+    def _score_batch(batch: list[Job]) -> Optional[list[MatchResult]]:
+        """Пробует батч на живых провайдерах по порядку.
+
+        Отказавший целиком помечается мёртвым до конца прогона — иначе каждый
+        следующий батч заново упирался бы в ту же пустую квоту.
+        """
+        for p in providers:
+            if p.name in dead:
+                continue
+            try:
+                if p.name not in clients:
+                    clients[p.name] = _get_client(p)
+                out = match_batch(batch, clients[p.name], p)
+            except _ProviderDeadError:
+                dead.add(p.name)
+                logger.warning("Провайдер %s исключён до конца прогона", p.name)
+                last_run_stats["switched"] = 1
+                continue
+            if out is not None:
+                last_run_stats["provider"] = p.name
+                return out
+            # None — разовый сбой (таймаут, битый JSON). Пробуем следующего.
+        return None
+
     for i in range(0, len(to_match), batch_size):
         batch_idx = i // batch_size + 1
         if i > 0:
             time.sleep(5)
         batch = to_match[i : i + batch_size]
         batch_map = {j.id: j for j in batch}
-        try:
-            results = match_batch(batch, client)
-        except _AIGeoBlockError:
-            # 403 — прекращаем все батчи; неотмеченные вернутся в след. прогон.
-            # В сбой засчитываем и текущий батч, и все, до которых не дошли.
-            remaining = to_match[i:]
-            last_run_stats["failed_batches"] += total_batches - batch_idx + 1
-            last_run_stats["unscored"] += len(remaining)
-            break
+        results = _score_batch(batch)
         if results is None:
-            logger.error("Batch %d/%d failed — %d jobs left unseen, will retry next run",
-                         batch_idx, total_batches, len(batch))
+            logger.error("Батч %d/%d не оценён — %d вакансий остались непросмотренными, "
+                         "вернутся в следующий прогон", batch_idx, total_batches, len(batch))
             last_run_stats["failed_batches"] += 1
             last_run_stats["unscored"] += len(batch)
             continue
@@ -495,10 +626,9 @@ def generate_cover_letter(title: str, company: str, why_fits: list[str],
     из описания вакансии на этапе матчинга, поэтому письмо получается предметным
     без повторного хранения полного текста вакансии.
     """
-    try:
-        client = _get_client()
-    except ValueError as e:
-        logger.error("Cover letter: %s", e)
+    providers = available_providers()
+    if not providers:
+        logger.error("Сопроводительное: не задан ни один ключ AI-провайдера")
         return None
 
     facts = "\n".join(f"- {r}" for r in (why_fits or [])[:5])
@@ -509,19 +639,23 @@ def generate_cover_letter(title: str, company: str, why_fits: list[str],
         f"{('Advice for applying: ' + recommendation) if recommendation else ''}\n\n"
         "Write the cover letter now."
     )
-    model_name = os.environ.get("CEREBRAS_MODEL", "gpt-oss-120b")
-    try:
-        resp = client.chat.completions.create(
-            model=model_name,
-            messages=[
-                {"role": "system", "content": _LETTER_INSTRUCTION},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.4,
-            max_tokens=600,
-            timeout=_CEREBRAS_TIMEOUT,
-        )
-        return (resp.choices[0].message.content or "").strip() or None
-    except Exception as e:
-        logger.error("Cover letter generation failed: %s", e)
-        return None
+    # Письмо генерируется по нажатию кнопки в Telegram: если первый провайдер
+    # отказал, молча вернуть None — значит показать пользователю пустоту.
+    for p in providers:
+        try:
+            resp = _get_client(p).chat.completions.create(
+                model=p.model,
+                messages=[
+                    {"role": "system", "content": _LETTER_INSTRUCTION},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.4,
+                max_tokens=600,
+                timeout=_CEREBRAS_TIMEOUT,
+            )
+            text = (resp.choices[0].message.content or "").strip()
+            if text:
+                return text
+        except Exception as e:
+            logger.error("Сопроводительное: %s не справился — %s", p.name, str(e)[:200])
+    return None

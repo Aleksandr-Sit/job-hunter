@@ -83,7 +83,8 @@ def _send_zero_alert(total: int, unseen: int, prefiltered: int, matched: int, th
             f"⚠️ Причина: <b>AI недоступен</b> — упали все {failed} батчей, "
             f"{last_run_stats.get('unscored', 0)} вакансий не оценены."
         )
-        lines.append("Проверь квоту/ключ Cerebras. Вакансии не потеряны — пересчитаются.")
+        lines.append("Отказали все провайдеры: проверь квоты и ключи. "
+                     "Вакансии не потеряны — пересчитаются.")
     elif failed:
         lines.append(
             f"Причина: AI оценил ниже порога. ⚠️ Но {failed} из "
@@ -93,6 +94,24 @@ def _send_zero_alert(total: int, unseen: int, prefiltered: int, matched: int, th
     else:
         lines.append("Причина: AI оценил ниже порога")
     send_text("\n".join(lines))
+
+
+def _warn_if_provider_switched() -> None:
+    """Сообщает, что основной AI-провайдер отказал, а работу вытянул запасной.
+
+    Без этого переключение проходит незаметно: вакансии приходят как обычно,
+    и о том, что у основного кончилась квота, станет известно только когда
+    откажет и запасной.
+    """
+    from .matcher.cerebras_matcher import last_run_stats
+    if not last_run_stats.get("switched"):
+        return
+    used = last_run_stats.get("provider") or "запасной"
+    send_text(
+        "⚠️ <b>Основной AI-провайдер отказал</b>\n"
+        f"Вакансии оценил запасной — <code>{used}</code>.\n"
+        "Проверь квоту и ключ основного, пока запас не кончился тоже."
+    )
 
 
 def run_once() -> None:
@@ -177,6 +196,7 @@ def run_once() -> None:
     # 3. AI матчинг
     matched = match_jobs(new_jobs, threshold=threshold, batch_size=batch_size)
     logger.info("Matched %d jobs above threshold %d%%", len(matched), threshold)
+    _warn_if_provider_switched()
 
     if not matched:
         _send_zero_alert(total_parsed, len(unseen), len(new_jobs), 0, threshold)
