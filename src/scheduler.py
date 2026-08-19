@@ -96,6 +96,55 @@ def _send_zero_alert(total: int, unseen: int, prefiltered: int, matched: int, th
     send_text("\n".join(lines))
 
 
+def _enrich_hh_and_rescore(jobs: list) -> list:
+    """Дотягивает полные описания вакансий с HH и пересчитывает по ним отбор.
+
+    RSS отдаёт ~125 символов, поэтому до этой стадии вакансии с HH оценивались
+    фактически по заголовку: все получали похожий балл и не различались между
+    собой, а ночные смены, офис и требования к английскому были не видны вообще.
+
+    Замер 19.08.2026 на 56 вакансиях: 7 отсеялись (две — ночные смены как режим),
+    у остальных баллы разъехались (AML-специалист 50 → 90, комплаенс 50 → 32).
+    """
+    from .parsers.hh_enrich import enrich
+
+    hh_before = sum(1 for j in jobs if (j.source or "") == "hh.ru")
+    if not hh_before:
+        return jobs
+
+    stats = enrich(jobs)
+    if not stats.enriched:
+        return jobs   # ничего не дотянулось — отбор пересчитывать не на чем
+
+    kept, dropped = [], []
+    for j in jobs:
+        if (j.source or "") != "hh.ru":
+            kept.append(j)
+            continue
+        best = score_job(j)["best"]
+        if best["passed_gate"] and best["recommend"]:
+            j.match_role = best["role"]
+            j.match_reasons = best["reasons"]
+            kept.append(j)
+        else:
+            dropped.append((j, best))
+
+    if dropped:
+        logger.info("HH после дообогащения отсеяно: %d из %d", len(dropped), hh_before)
+        for j, best in dropped[:5]:
+            why = "; ".join(best.get("reasons") or []) or "балл ниже порога"
+            logger.info("  отсеяна [%d] %s | %s", best["score"], j.title[:60], why[:110])
+
+    if not stats.healthy:
+        send_text(
+            "⚠️ <b>HH: дообогащение почти не работает</b>\n"
+            f"Извлечено {stats.enriched} из {stats.attempted} описаний.\n"
+            "Похоже, сменилась вёрстка hh.ru — вакансии с HH снова "
+            "оцениваются по заголовку."
+        )
+    return kept
+
+
 def _warn_if_provider_switched() -> None:
     """Сообщает, что основной AI-провайдер отказал, а работу вытянул запасной.
 
@@ -176,6 +225,14 @@ def run_once() -> None:
     new_jobs = dedupe_jobs(new_jobs)
     if before_ai != len(new_jobs):
         logger.info("Near-дубликаты схлопнуты до AI: %d → %d", before_ai, len(new_jobs))
+
+    # 2б. Дообогащение HH и ПОВТОРНЫЙ отбор.
+    # Порядок важен вдвойне. После дедупа — чтобы не качать копии. До `ai_ids` —
+    # чтобы отсеянные здесь попали в mark_prefilter_seen ниже и не вернулись
+    # на следующем прогоне. Без повторного score_job вся стадия бессмысленна:
+    # описание приехало бы, а решение осталось бы принятым по заголовку.
+    if cfg.get("hh_enrich", {}).get("enabled", True):
+        new_jobs = _enrich_hh_and_rescore(new_jobs)
 
     # Провизорный seen — только детерминированно отсеянное, с отпечатком версии:
     # смена критериев переоткроет эти отказы. Кандидатов в AI помечает match_jobs
