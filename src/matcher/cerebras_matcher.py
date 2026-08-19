@@ -56,9 +56,12 @@ class Provider:
 
 # Реестр. Добавить нового — одна строка здесь + ключ в .env, код не трогается.
 _PROVIDER_REGISTRY: dict[str, Provider] = {
+    # gpt-oss-120b — та же модель, что крутилась на Cerebras: поведение скоринга
+    # не меняется, кэш прежних оценок остаётся сопоставимым. Через OpenRouter
+    # она вдесятеро дешевле ($0.03/$0.17 против $0.35/$0.75 за 1M токенов).
     "openrouter": Provider("openrouter", "https://openrouter.ai/api/v1",
                            "OPENROUTER_API_KEY", "OPENROUTER_MODEL",
-                           "deepseek/deepseek-chat"),
+                           "openai/gpt-oss-120b"),
     "cerebras":   Provider("cerebras", "https://api.cerebras.ai/v1",
                            "CEREBRAS_API_KEY", "CEREBRAS_MODEL",
                            "gpt-oss-120b"),

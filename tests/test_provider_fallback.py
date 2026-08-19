@@ -37,7 +37,7 @@ class TestProviderRegistry:
         monkeypatch.setenv("OPENROUTER_API_KEY", "x")
         monkeypatch.delenv("OPENROUTER_MODEL", raising=False)
         p = m._PROVIDER_REGISTRY["openrouter"]
-        assert p.model == "deepseek/deepseek-chat"
+        assert p.model == "openai/gpt-oss-120b"
         monkeypatch.setenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct")
         assert p.model == "meta-llama/llama-3.3-70b-instruct"
 
