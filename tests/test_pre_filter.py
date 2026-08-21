@@ -1048,3 +1048,39 @@ class TestLinkingVerbBeforeMarker:
         # и он НЕ должен гасить требование, стоящее до него.
         txt = "Fluent English is required for daily calls. Nice to have: Spanish"
         assert _fluent_english_required(_n(txt)) is True
+
+
+class TestCyrillicLanguageNeedsContext:
+    r"""Кириллическое название языка — ещё и топоним, национальность, кухня.
+
+    Регрессия 21.08.2026, найдена в живом прогоне через час после деплоя:
+    стем `белорусск\w*`, добавленный ради «знание польскОГО языка», поймал
+    «м. БелорусскАЯ» в описании офиса и зарубил релевантную вакансию
+    «Customer success manager (Enterprise, IT, SaaS)».
+
+    Поэтому для кириллического совпадения требуется слово про язык рядом.
+    На английскую половину не распространяется: там «Ukrainian»/«Greek»
+    в вакансиях почти всегда про язык.
+    """
+
+    @pytest.mark.parametrize("txt", [
+        "офис в центре москвы (м. Белорусская) со спортзалом и катком",
+        "офис на французском бульваре, рядом греческий ресторан",
+        "наши клиенты — турецкие и польские партнёры",
+        "поставки из Китая, работа с китайскими фабриками",
+    ])
+    def test_toponym_and_nationality_pass(self, txt):
+        assert _foreign_lang_required(_n(txt)) is False
+
+    @pytest.mark.parametrize("txt", [
+        "Требуется знание польского языка",
+        "Обязательно владение чешским языком",
+        "Необходим иврит на разговорном уровне",
+        "Требуется белорусский язык на уровне C1",
+    ])
+    def test_real_requirement_still_gated(self, txt):
+        assert _foreign_lang_required(_n(txt)) is True
+
+    def test_english_half_is_not_affected(self):
+        # Контекст не требуется для латиницы — проверяем, что не сломали.
+        assert _foreign_lang_required(_n("High proficiency in spoken Ukrainian is a must")) is True

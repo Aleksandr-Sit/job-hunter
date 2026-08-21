@@ -587,6 +587,18 @@ def _mention_is_optional(blob: str, start: int, end: int) -> bool:
     return bool(hp) and not _SENTENCE_BREAK.search(head[hp.end():])
 
 
+# Русские названия языков — ещё и топонимы, национальности и кухня. Стемы,
+# добавленные 21.08.2026 ради «знание польскОГО языка», немедленно поймали
+# «м. БелорусскАЯ» в описании офиса и зарубили релевантную вакансию
+# Customer Success. Поэтому для КИРИЛЛИЧЕСКОГО совпадения требуем рядом
+# слово про язык; на английскую половину это не распространяется — там
+# «Ukrainian»/«Greek» в вакансиях почти всегда про язык.
+_CYRILLIC = re.compile(r'[а-яё]', re.IGNORECASE)
+_LANG_CONTEXT_RU = re.compile(
+    r'(язык|владен|знан|уровн|разговорн|письменн|носител|общен|speak|fluen|proficien|native|level|[abc][12])',
+    re.IGNORECASE)
+
+
 def _foreign_lang_required(blob: str) -> bool:
     """True, если иностранный язык требуется (а не «будет плюсом»).
 
@@ -602,6 +614,12 @@ def _foreign_lang_required(blob: str) -> bool:
             continue
         if _in_optional_section(blob, m.start()):
             continue
+        # Кириллическое название без слова про язык рядом — это топоним или
+        # национальность («м. Белорусская», «французский бульвар»), а не требование.
+        if _CYRILLIC.search(m.group(0)):
+            window = blob[max(0, m.start() - 60): m.end() + 60]
+            if not _LANG_CONTEXT_RU.search(window):
+                continue
         return True  # упоминание без пометки «плюс» и вне «желательного» раздела
     return False
 
