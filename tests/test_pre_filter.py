@@ -7,8 +7,11 @@ F10 — «N лет» в описании КОМПАНИИ («spent the last 15 y
 import pytest
 
 from src.matcher.pre_filter import (
+    _fluent_english_required,
+    _foreign_lang_required,
     _high_exp_required,
     _matches,
+    _n,
     passes_hard_gates,
     score_vacancy,
 )
@@ -973,3 +976,75 @@ class TestOptionalMarkerShape:
         t = ("russian speaking support specialist for our cis users. "
              "fluent english required.")
         assert _fluent_english_required(t) is False
+
+
+class TestUkrainianAndLanguageStems:
+    """Украинский в гейте и русские названия языков стемами.
+
+    Повод — 21.08.2026: «Account Manager» у Statok (Ларнака) с формулировкой
+    «High proficiency in spoken Ukrainian is a must» набрала 66 баллов и ушла
+    в Telegram. Украинского и белорусского в списке не было вообще, хотя
+    соседние языки СНГ — казахский, грузинский, армянский, узбекский — стояли.
+
+    Заодно вскрылось, что русские названия были записаны именительным падежом
+    и \b(польский)\b не ловил «знание польскОГО языка».
+
+    Цена замерена на батче 3565 вакансий: 282 -> 281 прошедших предфильтр,
+    потеряна одна — с реальным требованием «fluent in ukrainian and russian».
+    """
+
+    @pytest.mark.parametrize("txt", [
+        "High proficiency in spoken Ukrainian is a must",
+        "fluent in ukrainian and russian (required for client communication)",
+        "Обязателен украинский язык",
+        "Требуется знание белорусского языка",
+    ])
+    def test_ukrainian_and_belarusian_are_gated(self, txt):
+        assert _foreign_lang_required(_n(txt)) is True
+
+    @pytest.mark.parametrize("txt", [
+        "Требуется знание польского языка",       # косвенный падеж
+        "Обязательно владение чешским языком",    # творительный
+        "Необходим иврит на разговорном уровне",
+        "Требуется знание венгерского языка",
+    ])
+    def test_russian_names_match_in_any_case_form(self, txt):
+        assert _foreign_lang_required(_n(txt)) is True
+
+    @pytest.mark.parametrize("txt", [
+        "Знание украинского языка будет плюсом",
+        "Ukrainian is an advantage",
+        "Специалист поддержки, удалённо, русскоязычная команда",
+        # «polish» намеренно не в списке — в английском это ещё и «шлифовать»
+        "polish your communication skills",
+    ])
+    def test_no_false_positives(self, txt):
+        assert _foreign_lang_required(_n(txt)) is False
+
+
+class TestLinkingVerbBeforeMarker:
+    r"""«English is A nice-to-have» — пометка «плюс», а не заголовок раздела.
+
+    _marker_is_header считала пометку заголовком следующего раздела, если перед
+    ней не стояла связка ВПЛОТНУЮ. Артикль «a» разрывал совпадение с `\s*$`,
+    пометка отбрасывалась, и вакансия с ЖЕЛАТЕЛЬНЫМ языком уходила в жёсткий
+    отсев. Логика общая, поэтому баг задевал и гейт английского.
+    """
+
+    @pytest.mark.parametrize("txt", [
+        "Ukrainian language courses are a nice-to-have benefit we cover",
+        "German is a nice to have",
+        "Spanish would be a plus",
+    ])
+    def test_optional_marker_survives_the_article(self, txt):
+        assert _foreign_lang_required(_n(txt)) is False
+
+    def test_english_gate_gets_the_same_fix(self):
+        assert _fluent_english_required(_n("English is a nice-to-have")) is False
+        assert _fluent_english_required(_n("Fluent English would be a plus")) is False
+
+    def test_real_header_is_still_a_header(self):
+        # Двоеточие без связки — это действительно заголовок следующего раздела,
+        # и он НЕ должен гасить требование, стоящее до него.
+        txt = "Fluent English is required for daily calls. Nice to have: Spanish"
+        assert _fluent_english_required(_n(txt)) is True
