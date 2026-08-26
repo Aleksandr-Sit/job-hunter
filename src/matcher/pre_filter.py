@@ -931,7 +931,16 @@ def dedupe_jobs(pairs: list) -> list:
     out = []
     for item in pairs:
         job = item[0] if isinstance(item, tuple) else item
-        key = dedupe_key(getattr(job, "company", ""), getattr(job, "title", ""))
+        company = getattr(job, "company", "") or ""
+        # У вакансий из Telegram в поле `company` лежит НЕ работодатель, а канал,
+        # который перепостил объявление (`telegram_parser` кладёт туда `@<канал>`).
+        # Одна и та же вакансия в двух каналах давала два разных ключа и доходила
+        # дважды — боевой случай 26.08.2026: «Требуется специалист по межбиржевой
+        # торговле» пришла из @cryptovakansii и @opento_crypto с одинаковым текстом
+        # и одинаковым баллом 90. Для дедупа канал — шум, дедуплицируем по заголовку.
+        if str(getattr(job, "source", "")).startswith("telegram"):
+            company = ""
+        key = dedupe_key(company, getattr(job, "title", ""))
         if key in seen:
             continue
         seen.add(key)
