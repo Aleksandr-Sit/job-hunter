@@ -409,8 +409,22 @@ def match_batch(jobs: list[Job], client: Optional[OpenAI] = None,
     try:
         data = json.loads(raw[start:end])
     except json.JSONDecodeError as e:
-        logger.error("JSON parse error: %s | raw: %s", e, raw[:300])
-        return None
+        # Модель изредка вставляет ВНУТРЬ строки сырой управляющий символ
+        # (перевод строки, таб) вместо экранированного, и строгий разбор роняет
+        # весь батч. Замер по логам 26.08.2026: 2 случая на 37 прогонов (~5%),
+        # и один из них совпал с мёртвым запасным провайдером — 5 вакансий
+        # уехали на следующий прогон. `strict=False` разрешает управляющие
+        # символы в строках, структуру JSON при этом не ослабляет: настоящая
+        # поломка формата по-прежнему не разберётся и уйдёт в ERROR ниже.
+        # Нестрогий разбор — ТОЛЬКО после отказа строгого, чтобы факт кривого
+        # ответа модели оставался видимым в логе, а не растворялся молча.
+        try:
+            data = json.loads(raw[start:end], strict=False)
+            logger.warning(
+                "JSON от модели содержал управляющий символ, разобран нестрого: %s", e)
+        except json.JSONDecodeError:
+            logger.error("JSON parse error: %s | raw: %s", e, raw[:300])
+            return None
 
     results = []
     for item in data:
