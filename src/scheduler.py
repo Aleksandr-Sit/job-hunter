@@ -96,7 +96,7 @@ def _send_zero_alert(total: int, unseen: int, prefiltered: int, matched: int, th
     send_text("\n".join(lines))
 
 
-def _enrich_hh_and_rescore(jobs: list) -> list:
+def _enrich_hh_and_rescore(jobs: list, limit: int = 120) -> list:
     """Дотягивает полные описания вакансий с HH и пересчитывает по ним отбор.
 
     RSS отдаёт ~125 символов, поэтому до этой стадии вакансии с HH оценивались
@@ -112,7 +112,7 @@ def _enrich_hh_and_rescore(jobs: list) -> list:
     if not hh_before:
         return jobs
 
-    stats = enrich(jobs)
+    stats = enrich(jobs, limit=limit)
     if not stats.enriched:
         return jobs   # ничего не дотянулось — отбор пересчитывать не на чем
 
@@ -232,7 +232,8 @@ def run_once() -> None:
     # на следующем прогоне. Без повторного score_job вся стадия бессмысленна:
     # описание приехало бы, а решение осталось бы принятым по заголовку.
     if cfg.get("hh_enrich", {}).get("enabled", True):
-        new_jobs = _enrich_hh_and_rescore(new_jobs)
+        new_jobs = _enrich_hh_and_rescore(
+            new_jobs, limit=cfg.get("hh_enrich", {}).get("limit", 120))
 
     # Провизорный seen — только детерминированно отсеянное, с отпечатком версии:
     # смена критериев переоткроет эти отказы. Кандидатов в AI помечает match_jobs
