@@ -772,6 +772,12 @@ roles:
       - "подфт"
       - "финансовый мониторинг"
       - "финансового мониторинга"
+      # Добавлено 31.08.2026: словарь знал AML и KYC, но не знал KYB (проверка
+      # юрлиц) и антифрод. Отсеивались Senior KYB Analyst и Fraud Risk Strategy.
+      - "kyb"
+      - "anti-fraud"
+      - "fraud analyst"
+      - "fraud risk"
       - "финансовому мониторингу"
       - "финмониторинг"
       - "транзакционный мониторинг"
@@ -856,6 +862,19 @@ roles:
       - "helpdesk"
       - "help desk"
       - "service desk"
+      # Добавлено 31.08.2026. Словарь не знал этих слов, и LinkedIn отсеивал по
+      # заголовку живые вакансии: Client Success Specialist, Client Onboarding
+      # Analyst, Middle Office Analyst, Back Office Processing Specialist,
+      # Merchant Implementation Manager, Implementation Analyst.
+      # «Бэк-офис» и «мидл-офис» — это операционная работа со сверками и данными,
+      # ровно та, что была в вакансии аналитика в Бильбао.
+      - "client success"
+      - "client onboarding"
+      - "customer onboarding"
+      - "back office"
+      - "middle office"
+      - "implementation manager"
+      - "implementation analyst"
       - "работа с обращениями"
     must_domain:
       - "финтех"
@@ -947,6 +966,16 @@ roles:
       - "account manager"
       - "customer success"
       - "менеджер по сопровождению"
+      # Добавлено 31.08.2026 по разбору отсеянных заголовков LinkedIn.
+      # ⚠️ "account executive" — это ПРОДАВЕЦ-закрывающий, а не «аккаунт-менеджер»
+      # (тот по замеру даёт медиану 80 000 против 120 000 у продаж в технологичном
+      # сегменте). Одинаковый корень, разные профессии — не объединять.
+      # Замер: на корпусе 2295 вакансий HH+ATS +7 рекомендованных, потеряно 0;
+      # на 989 карточках LinkedIn +22 прошедших по заголовку, потеряно 0.
+      - "account executive"
+      - "business development"
+      - "business development manager"
+      - "business development representative"
       - "клиентский менеджер"
     must_domain:
       # крипто/web3
