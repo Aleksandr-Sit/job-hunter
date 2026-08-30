@@ -59,6 +59,39 @@ _RE_TAG = re.compile(r"<[^>]+>")
 _RE_WS = re.compile(r"\s+")
 
 
+_WATCH_BUCKET = "__watch__"   # служебная метка страны для вакансий watch-компаний
+
+
+def _round_robin(cards: list[dict]) -> list[dict]:
+    """Раздаёт бюджет описаний ПО КРУГУ между странами, а не по порядку сбора.
+
+    Зачем. Описания качаются подряд и обрываются на `max_descriptions`, а карточки
+    складывались в порядке обхода стран. Боевой прогон 30.08.2026: собрано 1005
+    карточек, потолок 400 — и его целиком съели первые четыре страны (Кипр, ОАЭ,
+    Греция, Сербия). Семь стран из одиннадцати не получили НИ ОДНОГО описания,
+    то есть до скоринга не дошли вовсе. Проблему создала не сама страна, а порядок:
+    после разбиения OR-запроса на четыре карточек стало втрое больше, а потолок
+    остался прежним.
+
+    Теперь: watch-компании идут первыми целиком (они редкие, их терять нельзя),
+    дальше страны чередуются по одной вакансии. Если потолок снова окажется ниже
+    числа карточек, недобор равномерно размажется по всем странам вместо того,
+    чтобы обнулить хвост списка.
+    """
+    watch = [c for c in cards if c.get("geo") == _WATCH_BUCKET]
+    buckets: dict[str, list[dict]] = {}
+    for c in cards:
+        if c.get("geo") != _WATCH_BUCKET:
+            buckets.setdefault(c.get("geo", "?"), []).append(c)
+
+    out = list(watch)
+    while any(buckets.values()):
+        for geo in list(buckets):
+            if buckets[geo]:
+                out.append(buckets[geo].pop(0))
+    return out
+
+
 def _clean(text: str) -> str:
     # unescape ПОСЛЕ вырезания тегов (см. _description), иначе экранированный
     # `&lt;script&gt;` превратится в настоящий тег уже после чистки.
@@ -172,6 +205,7 @@ class LinkedInParser(BaseParser):
             for page in range(self.pages_per_query):
                 cards = self._company_cards(cid, page * _PAGE)
                 for c in cards:
+                    c["geo"] = _WATCH_BUCKET
                     found.setdefault(c["id"], c)
                 time.sleep(self.delay)
                 if len(cards) < _PAGE:
@@ -189,6 +223,7 @@ class LinkedInParser(BaseParser):
                         break
                     cards = self._cards(query, geo_id, page * _PAGE)
                     for c in cards:
+                        c["geo"] = geo_name
                         found.setdefault(c["id"], c)
                     time.sleep(self.delay)
                     if len(cards) < _PAGE:
@@ -201,7 +236,7 @@ class LinkedInParser(BaseParser):
 
         # Описания — отдельный запрос на вакансию, самая дорогая часть прохода
         jobs: list[Job] = []
-        for i, c in enumerate(found.values()):
+        for i, c in enumerate(_round_robin(list(found.values()))):
             if i >= self.max_descriptions or self._blocked():
                 logger.info("LinkedIn: остановились на %d вакансиях из %d",
                             i, len(found))
