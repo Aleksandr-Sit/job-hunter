@@ -19,7 +19,7 @@ from .bot.callback_handler import run_listener
 from .bot.notifier import send_daily_summary, send_jobs_batch, send_text
 from .log_redact import RedactingFilter
 from .matcher.cerebras_matcher import match_jobs
-from .matcher.pre_filter import _prefilter_version, dedupe_jobs, score_job
+from .matcher.pre_filter import _prefilter_version, dedupe_jobs, is_soft_reject, score_job
 from .models import Job
 
 load_dotenv(Path(__file__).parent.parent / ".env")
@@ -139,10 +139,53 @@ def _enrich_hh_and_rescore(jobs: list, limit: int = 120) -> list:
         send_text(
             "⚠️ <b>HH: дообогащение почти не работает</b>\n"
             f"Извлечено {stats.enriched} из {stats.attempted} описаний.\n"
-            "Похоже, сменилась вёрстка hh.ru — вакансии с HH снова "
-            "оцениваются по заголовку."
+            "Либо антибот hh.ru на объёме (лечится паузой _PAUSE), либо "
+            "сменилась вёрстка (тогда — селекторы). Пока вакансии с HH "
+            "снова оцениваются по заголовку."
         )
     return kept
+
+
+def _rescue_hh_rejects(jobs: list, limit: int = 220) -> list:
+    """Пересматривает отказы HH, вынесенные по обрезанному описанию.
+
+    Зачем. RSS отдаёт медианно 126 символов, то есть решение «нет ролевых слов /
+    нет крипто-контекста» принимается фактически по заголовку. Дообогащение до этой
+    правки применялось ТОЛЬКО к выжившим (`_enrich_hh_and_rescore`), поэтому могло
+    отбор лишь ужесточить — вернуть ошибочно отсеянное было нечем.
+
+    Замер на боевом прогоне 05.09.2026: из 227 новых вакансий HH предфильтр пропускал
+    4, ещё 17 упирались в настоящие блокеры (английский, опыт, dev-роль), а 206
+    отсеивались только по роли/домену. Дообогащение случайной выборки из этих 206
+    вернуло в отбор 19%.
+
+    Берём только «мягкие» отказы (см. `is_soft_reject`): отказ по английскому или
+    гражданству полным описанием не переворачивается, качать его — впустую тратить
+    ~0.8 МБ и 0.87 с на вакансию.
+    """
+    if not jobs:
+        return []
+    from .parsers.hh_enrich import enrich
+
+    targets = jobs[:limit]
+    stats = enrich(targets, limit=limit)
+    if not stats.enriched:
+        logger.info("HH пересмотр отказов: не дотянулось ни одного описания")
+        return []
+
+    recovered = []
+    for j in targets:
+        best = score_job(j)["best"]
+        if best["passed_gate"] and best["recommend"]:
+            j.match_role = best["role"]
+            j.match_reasons = best["reasons"]
+            recovered.append(j)
+
+    logger.info("HH пересмотр отказов: дообогащено %d из %d, вернулось в отбор %d",
+                stats.enriched, len(targets), len(recovered))
+    for j in recovered[:5]:
+        logger.info("  возвращена [%s] %s", j.match_role, j.title[:65])
+    return recovered
 
 
 def _warn_if_provider_switched() -> None:
@@ -205,14 +248,21 @@ def run_once() -> None:
     unseen = [j for j in all_jobs if j.id not in seen_ids]
     new_jobs = []
     near_miss = []
+    hh_retry = []
     for j in unseen:
-        best = score_job(j)["best"]
+        scored = score_job(j)
+        best = scored["best"]
         if best["passed_gate"] and best["recommend"]:
             j.match_role = best["role"]
             j.match_reasons = best["reasons"]
             new_jobs.append(j)
-        elif best["passed_gate"] and best["score"] >= 40:
+            continue
+        if best["passed_gate"] and best["score"] >= 40:
             near_miss.append((best["score"], j, best["reasons"]))
+        # Отказ HH, вынесенный по 126-символьному огрызку, — кандидат на пересмотр
+        # с полным описанием (см. _rescue_hh_rejects).
+        if (j.source or "") == "hh.ru" and is_soft_reject(scored):
+            hh_retry.append(j)
 
     # Near-дубликаты схлопываем ДО обращения к AI. Раньше это делалось только перед
     # отправкой (шаг 4), поэтому до Telegram копии не доходили — но каждая успевала
@@ -232,8 +282,12 @@ def run_once() -> None:
     # на следующем прогоне. Без повторного score_job вся стадия бессмысленна:
     # описание приехало бы, а решение осталось бы принятым по заголовку.
     if cfg.get("hh_enrich", {}).get("enabled", True):
-        new_jobs = _enrich_hh_and_rescore(
-            new_jobs, limit=cfg.get("hh_enrich", {}).get("limit", 120))
+        _hh_cfg = cfg.get("hh_enrich", {})
+        new_jobs = _enrich_hh_and_rescore(new_jobs, limit=_hh_cfg.get("limit", 120))
+        # ...и только потом пересматриваем отказы: дедуп уже прошёл, копии не качаем.
+        rescued = _rescue_hh_rejects(hh_retry, limit=_hh_cfg.get("retry_limit", 220))
+        if rescued:
+            new_jobs = dedupe_jobs(new_jobs + rescued)
 
     # Провизорный seen — только детерминированно отсеянное, с отпечатком версии:
     # смена критериев переоткроет эти отказы. Кандидатов в AI помечает match_jobs
