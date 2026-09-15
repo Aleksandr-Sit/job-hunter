@@ -649,6 +649,28 @@ CRITERIA = _load_criteria()
 AVOID_KW = _load_avoid_keywords()
 _W = CRITERIA["weights"]
 
+# Стоп-лист работодателей (санкции, уголовные дела) — см. employer_blocklist в
+# criteria.yaml. Целое слово, а не подстрока: «htx» не должен срезать «Chtx Labs».
+_EMPLOYER_BLOCKLIST = [
+    (term, re.compile(r"(?<!\w)" + re.escape(term.lower()) + r"(?!\w)"))
+    for term in CRITERIA.get("employer_blocklist") or []
+]
+_BLOCKED_EMPLOYER_REASON = "работодатель в стоп-листе (санкции/уголовные дела)"
+
+
+def _blocked_employer(company: str | None, title: str | None) -> str | None:
+    """Термин стоп-листа, найденный в компании или заголовке, иначе None.
+
+    Заголовок проверяется потому, что у Telegram-вакансий в поле `company` лежит
+    канал, а работодатель упоминается в заголовке поста. Описание не проверяется:
+    фраза «опыт работы с Garantex» говорит о кандидате, а не о работодателе.
+    """
+    hay = f"{_n(company)} | {_n(title)}"
+    for term, rx in _EMPLOYER_BLOCKLIST:
+        if rx.search(hay):
+            return term
+    return None
+
 # Какие уровни требования английского считать жёстким барьером.
 # Строгость: spoken > generic > written. «written» по умолчанию НЕ режем —
 # он закрывается переводчиком/AI, вместо отсева мягкий штраф (см. criteria.yaml).
@@ -956,6 +978,15 @@ def score_job(job: Job) -> dict:
     (реальный случай 05.08.2026: Fireblocks «Technical Support Engineer, APAC»,
     location=Singapore) не получали штрафа — в описании страна не упоминалась.
     """
+    blocked = _blocked_employer(job.company, job.title)
+    if blocked:
+        # Жёсткий отказ по всем ролям сразу: дообогащение описанием его не
+        # переворачивает, поэтому причина НЕ входит в _SOFT_GATE_REASONS.
+        results = [{"role": r, "passed_gate": False, "score": 0, "recommend": False,
+                    "reasons": [f"{_BLOCKED_EMPLOYER_REASON}: {blocked}"]}
+                   for r in CRITERIA["roles"]]
+        return {"best": results[0], "all": results}
+
     text = job.description
     if job.location:
         text = f"{text}\nLocation: {job.location}"

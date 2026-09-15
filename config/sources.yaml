@@ -15,6 +15,8 @@ telegram_channels:
   - web3vacancy          # 20 постов — web3 вакансии EN
   - web3hiring           # 61k подписчиков, daily global web3 вакансии, EN
   - jobers               # 20 постов — «РАБОТА в КриптоИндустрии» RU (проба 22.07)
+  - careers_crypto       # «CC | Крипто Вакансии» RU, 25,7k; проба t.me/s с VPS 15.09.2026:
+                         # 20 постов, последние 11–14.09 (RU_CRYPTO_MARKET_MAP §6)
   # Не работают (приватные или нет публичного preview):
   # - pythonru, django_jobs, it_jobs_world, crypto_jobs_channel
   # - web3_jobs_channel, ru_holder
