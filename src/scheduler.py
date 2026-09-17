@@ -416,8 +416,19 @@ def main() -> None:
         logger.info("Job Hunter running. Interval: %d min", interval)
         send_text(f"🤖 <b>Job Hunter запущен</b>\nИнтервал: каждые {interval} мин.")
 
-    # Первый запуск сразу
-    run_once()
+    # Первый запуск сразу. Под защитой: без неё падение стартового прогона роняло
+    # контейнер целиком, а `restart: unless-stopped` поднимал его заново — карусель
+    # перезапусков вместо работы по расписанию (ревизия 17.09.2026).
+    try:
+        run_once()
+    except Exception:
+        logger.exception("Стартовый прогон упал")
+        try:
+            send_text("⚠️ <b>Стартовый прогон упал</b>\n"
+                      "Бот жив и работает по расписанию, но первый прогон "
+                      "не доделан. Причина — в логе (traceback).")
+        except Exception:
+            logger.exception("Не удалось отправить алерт о падении стартового прогона")
 
     scheduler.start()
 
