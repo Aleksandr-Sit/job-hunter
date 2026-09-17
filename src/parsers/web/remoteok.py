@@ -4,8 +4,9 @@ from datetime import datetime, timezone
 
 import requests
 
-from ...models import MAX_DESCRIPTION_CHARS, Job
+from ...models import Job
 from ..base import BaseParser
+from ..normalize import clean_description, html_to_text
 
 logger = logging.getLogger(__name__)
 _API_URL = "https://remoteok.com/api"
@@ -64,7 +65,8 @@ class RemoteOKParser(BaseParser):
             id=f"rok_{item['id']}",
             title=item.get("position", ""),
             company=item.get("company", ""),
-            description=item.get("description", "")[:MAX_DESCRIPTION_CHARS],
+            # RemoteOK отдаёт описание сырым HTML — в текст ДО обрезки.
+            description=clean_description(html_to_text(item.get("description"))),
             url=item.get("url", ""),
             source="remoteok.com",
             salary_min=sal_min,

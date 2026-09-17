@@ -11,6 +11,10 @@
 """
 from __future__ import annotations
 
+import html
+
+from bs4 import BeautifulSoup
+
 from ..models import MAX_DESCRIPTION_CHARS
 
 # Локация, которая сама говорит «удалённо» — тогда города в ней нет.
@@ -31,6 +35,26 @@ def clean_description(text: str | None) -> str:
     Описания живут только в памяти прогона, в БД не пишутся.
     """
     return (text or "")[:MAX_DESCRIPTION_CHARS]
+
+
+def html_to_text(raw: str | None) -> str:
+    """HTML (в том числе экранированный) → читаемый текст. Вызывать ДО обрезки.
+
+    Greenhouse отдаёт описание ЭКРАНИРОВАННЫМ: проверено 17.09.2026 — 25 из 25
+    вакансий Bitpanda начинались с `&lt;div…`. Разметка уходила в гейты как есть
+    и съедала лимит обрезки, из-за чего требования (они стоят в конце) до гейтов
+    не доезжали. Lever держит HTML в `lists[].content`, RemoteOK — в описании.
+
+    Порядок обязателен: сначала распаковать сущности, потом разобрать теги, и
+    только затем `clean_description` — иначе обрезка режет разметку, а не текст.
+    """
+    text = (raw or "").strip()
+    if not text:
+        return ""
+    unescaped = html.unescape(text)
+    if "<" not in unescaped:
+        return unescaped
+    return BeautifulSoup(unescaped, "html.parser").get_text(separator="\n", strip=True)
 
 
 def is_remote_location(location: str | None) -> bool:

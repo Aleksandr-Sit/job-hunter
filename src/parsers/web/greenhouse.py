@@ -13,7 +13,7 @@ from urllib3.util.retry import Retry
 
 from ...models import Job
 from ..base import BaseParser
-from ..normalize import clean_description, detect_remote
+from ..normalize import clean_description, detect_remote, html_to_text
 
 logger = logging.getLogger(__name__)
 
@@ -91,8 +91,9 @@ class GreenhouseParser(BaseParser):
         except Exception:
             published_at = None
 
-        # Content field contains job description HTML
-        content = clean_description(item.get("content", ""))
+        # Описание приходит ЭКРАНИРОВАННЫМ HTML (`&lt;div&gt;…`): распаковываем и
+        # разбираем в текст ДО обрезки — см. normalize.html_to_text.
+        content = clean_description(html_to_text(item.get("content", "")))
 
         # Раньше is_remote ставился по слову «remote» ГДЕ УГОДНО в тексте — и
         # вакансия в офисе Нью-Йорка («flexibility of remote work» в блоке про
