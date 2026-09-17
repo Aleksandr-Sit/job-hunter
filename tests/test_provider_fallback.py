@@ -43,23 +43,40 @@ class TestProviderRegistry:
 
 
 class TestDeadDetection:
-    @pytest.mark.parametrize("err", [
-        "Error code: 402 - {'type': 'payment_required_error', 'param': 'quota'}",
-        "Error code: 401 - unauthorized",
-        "Error code: 403 - access denied",
-        "insufficient_quota",
-    ])
-    def test_hard_failures_mean_switch(self, err):
-        assert m._is_provider_dead(err) is True
+    """Решение принимается по КОДУ ответа, а не по цифрам в тексте ошибки.
 
-    @pytest.mark.parametrize("err", [
-        "Error code: 429 - rate_limit_exceeded",
-        "Error code: 503 - service unavailable",
-        "Read timed out",
-    ])
-    def test_transient_failures_do_not_kill_provider(self, err):
+    До ревизии 17.09.2026 хватало подстроки: «rate limit … 140213 tokens» (429)
+    содержит «402», а id запроса — «403», и живой провайдер выключался до конца
+    прогона с ложным алертом.
+    """
+
+    @staticmethod
+    def _api_error(status: int, message: str = "boom"):
+        import httpx
+        import openai
+        request = httpx.Request("POST", "https://api.example/v1/chat/completions")
+        return openai.APIStatusError(
+            message, response=httpx.Response(status, request=request), body=None)
+
+    @pytest.mark.parametrize("status", [401, 402, 403])
+    def test_hard_failures_mean_switch(self, status):
+        assert m._is_provider_dead(self._api_error(status)) is True
+
+    @pytest.mark.parametrize("status", [429, 500, 503])
+    def test_transient_failures_do_not_kill_provider(self, status):
         # 429 и 5xx лечатся повтором на том же провайдере — переключаться рано.
+        assert m._is_provider_dead(self._api_error(status)) is False
+
+    def test_digits_in_message_do_not_kill_live_provider(self):
+        err = self._api_error(429, "rate limit exceeded: 140213 tokens, req_403abc")
         assert m._is_provider_dead(err) is False
+
+    def test_error_without_status_is_not_fatal(self):
+        import httpx
+        import openai
+        request = httpx.Request("POST", "https://api.example/v1/chat/completions")
+        assert m._is_provider_dead(openai.APITimeoutError(request=request)) is False
+        assert m._is_provider_dead(RuntimeError("Error code: 402")) is False
 
 
 class TestFallbackLoop:

@@ -322,19 +322,31 @@ def _get_client(provider: Optional[Provider] = None) -> OpenAI:
     return OpenAI(**kwargs)
 
 
-def _is_provider_dead(err: str) -> bool:
+_DEAD_STATUS = frozenset({401, 402, 403})
+
+
+def _error_status(err: BaseException) -> Optional[int]:
+    """HTTP-код ошибки openai SDK; None — кода нет (таймаут, обрыв связи)."""
+    status = getattr(err, "status_code", None)
+    if status is None:
+        status = getattr(getattr(err, "response", None), "status_code", None)
+    return status if isinstance(status, int) else None
+
+
+def _is_provider_dead(err: BaseException) -> bool:
     """Отказ провайдера целиком, а не сбой одного батча.
 
     402 — кончилась квота (Cerebras, 18.08.2026), 401 — ключ отозван,
     403 — гео-блок. Повторять запрос к этому же провайдеру бессмысленно:
     следующий батч упрётся в то же самое.
+
+    Решение принимается по КОДУ ответа, а не по цифрам в тексте ошибки: текст
+    429 «rate limit … 140213 tokens» содержит «402», а id запроса — «403», и по
+    подстроке живой провайдер выключался до конца прогона с ложным алертом
+    (ревизия 17.09.2026). Ошибка без кода (таймаут, обрыв) провайдера не хоронит:
+    батч всё равно уйдёт следующему в очереди.
     """
-    low = err.lower()
-    return (
-        "402" in err or "payment_required" in low or "insufficient" in low
-        or "401" in err or "unauthorized" in low or "invalid_api_key" in low
-        or "403" in err or "access denied" in low
-    )
+    return _error_status(err) in _DEAD_STATUS
 
 
 def match_batch(jobs: list[Job], client: Optional[OpenAI] = None,
@@ -382,12 +394,13 @@ def match_batch(jobs: list[Job], client: Optional[OpenAI] = None,
             raw = response.choices[0].message.content.strip()
             break
         except Exception as e:
-            err_str = str(e)
-            if _is_provider_dead(err_str):
-                logger.error("Провайдер %s отказал целиком: %s", provider.name, err_str[:200])
+            if _is_provider_dead(e):
+                logger.error("Провайдер %s отказал целиком (HTTP %s): %s",
+                             provider.name, _error_status(e), str(e)[:200])
                 raise _ProviderDeadError(provider.name) from e
-            is_rate_limit = "429" in err_str or "rate_limit" in err_str.lower()
-            is_server_err = any(c in err_str for c in ("500", "502", "503", "504"))
+            status = _error_status(e)
+            is_rate_limit = status == 429
+            is_server_err = status is not None and 500 <= status < 600
             if (is_rate_limit or is_server_err) and attempt < _CEREBRAS_MAX_RETRY:
                 wait = _CEREBRAS_RETRY_SLEEP * attempt
                 logger.warning("%s: попытка %d/%d не удалась (%s). Повтор через %dс…",
@@ -436,8 +449,12 @@ def match_batch(jobs: list[Job], client: Optional[OpenAI] = None,
                 watch_out=item.get("watch_out", []),
                 recommendation=item.get("recommendation", ""),
             ))
-        except (KeyError, ValueError) as e:
-            logger.warning("Skipping malformed match item: %s", e)
+        except Exception as e:
+            # Ловим ЛЮБУЮ ошибку элемента, а не только KeyError/ValueError:
+            # `"score": null` даёт TypeError и до правки ронял весь прогон, а
+            # элемент-строка вместо объекта — AttributeError (ревизия 17.09.2026).
+            logger.warning("Пропущен кривой элемент ответа (%s): %s | %.200s",
+                           type(e).__name__, e, item)
 
     logger.info("Батч оценён: %d вакансий через %s", len(results), provider.name)
     return results
@@ -522,7 +539,20 @@ def match_jobs(jobs: list[Job], threshold: int = 65, batch_size: int = _BATCH_SI
             last_run_stats["failed_batches"] += 1
             last_run_stats["unscored"] += len(batch)
             continue
-        storage.mark_seen_batch(batch)
+        # Помечаем вердиктом только те id, которые модель реально вернула. Раньше
+        # помечался весь батч: вакансия, выпавшая из ответа (или отброшенная как
+        # кривой элемент), исчезала навсегда без единой оценки. Замер 17.09.2026:
+        # неполных батчей 2 из 836 — спящий риск, а не текущая потеря.
+        returned = {r.job_id for r in results}
+        scored = [j for j in batch if j.id in returned]
+        missing = [j.id for j in batch if j.id not in returned]
+        if missing:
+            logger.warning("Батч %d/%d: модель не вернула оценку для %d из %d "
+                           "(%s) — вернутся в следующий прогон",
+                           batch_idx, total_batches, len(missing), len(batch),
+                           ", ".join(missing))
+            last_run_stats["unscored"] += len(missing)
+        storage.mark_seen_batch(scored)
         with _MATCHES_JSONL.open("a", encoding="utf-8") as f:
             for r in results:
                 storage.save_match(r, version)
