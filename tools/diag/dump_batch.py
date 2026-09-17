@@ -41,9 +41,12 @@ def fetch_jobs() -> list[dict]:
     with ThreadPoolExecutor(max_workers=len(parsers)) as pool:
         for f in as_completed({pool.submit(run, p) for p in parsers}):
             jobs.extend(f.result())
+    # location/is_remote обязательны: боевой score_job подмешивает локацию в текст,
+    # и без неё замер терял штраф «только офис» (ревизия 17.09.2026).
     return [
         {"id": j.id, "title": j.title, "company": j.company,
-         "description": j.description, "source": j.source, "url": j.url}
+         "description": j.description, "source": j.source, "url": j.url,
+         "location": j.location, "is_remote": j.is_remote}
         for j in jobs
     ]
 
