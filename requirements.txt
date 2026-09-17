@@ -1,18 +1,26 @@
-# AI матчинг (Cerebras — OpenAI-совместимый SDK, бесплатный inference)
-openai>=1.0.0
+# Версии закреплены 17.09.2026 по факту рабочего контейнера (pip freeze).
+# Зачем жёстко: было `>=`, и любая пересборка молча тянула свежие версии —
+# выход APScheduler 4 (другой API) уронил бы запуск, а смена openai SDK меняет
+# поведение обработки ошибок провайдера. Обновлять осознанно: поднять версию,
+# прогнать тесты на VPS, посмотреть стартовый прогон.
 
-# HTTP & scraping
-requests>=2.31.0
-beautifulsoup4>=4.12.0
-lxml>=5.0.0
-python-jobspy>=1.1.0  # LinkedIn, Indeed и другие job boards
+# AI-матчинг (OpenAI-совместимые провайдеры: OpenRouter, Groq, Cerebras)
+openai==3.14.1
 
-# Telegram bot (отправка уведомлений)
-python-telegram-bot>=21.0
+# HTTP и разбор HTML
+requests==2.34.2
+beautifulsoup4==4.15.0
+lxml==6.1.3
 
-# Scheduler
-APScheduler>=3.10.0
+# Telegram-бот (карточки и кнопки)
+python-telegram-bot==22.8
 
-# Config
-PyYAML>=6.0
-python-dotenv>=1.0.0
+# Планировщик
+APScheduler==3.11.3
+
+# Конфигурация
+PyYAML==6.0.3
+python-dotenv==1.2.3
+
+# python-jobspy УДАЛЁН 17.09.2026: нигде не импортировался, но тянул в образ
+# pandas и numpy (~300 МБ) на диске, где свободно было 1.3 ГБ.
