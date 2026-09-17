@@ -23,7 +23,10 @@ _BASE = "https://career.habr.com"
 _URL = f"{_BASE}/vacancies"
 # РФ-крипто/финтех-запросы. Habr q= ищет по тайтлу/описанию; pre_filter отфильтрует
 # роль/домен (dev-роли отсекутся код-гейтом). Дедуп по vacancy id.
-_QUERIES = ["blockchain", "криптовалюта", "web3", "цфа", "цифровой рубль", "crypto"]
+# «цифровые валюты» — термин 282-ФЗ (в силе с 01.09.2026), которым банки называют
+# крипто-направления в вакансиях (добавлено 15.09.2026).
+_QUERIES = ["blockchain", "криптовалюта", "web3", "цфа", "цифровой рубль", "crypto",
+            "цифровые валюты"]
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                   "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",

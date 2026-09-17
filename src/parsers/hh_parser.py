@@ -39,6 +39,12 @@ _SALARY_RE = re.compile(
 )
 
 
+def _norm_company(name: str | None) -> str:
+    """Название компании для сравнения: регистр, неразрывные пробелы, лишние пробелы.
+    В RSS встречается «ООО\\xa0ТРАНОМИКА» — с неразрывным пробелом после формы."""
+    return " ".join((name or "").replace("\xa0", " ").lower().split())
+
+
 class HHParser(BaseParser):
     name = "hh"
 
@@ -51,7 +57,7 @@ class HHParser(BaseParser):
             return []
 
         second_pass = self.cfg.get("second_pass", True)
-        seen: set[str] = set()
+        seen: dict[str, Job] = {}
         jobs: list[Job] = []
         added_by_second = 0
 
@@ -59,7 +65,7 @@ class HHParser(BaseParser):
             fresh = self._fetch_query(query, by_date=True)
             for job in fresh:
                 if job.id not in seen:
-                    seen.add(job.id)
+                    seen[job.id] = job
                     jobs.append(job)
 
             # Второй проход имеет смысл ТОЛЬКО для запросов, упёршихся в потолок:
@@ -69,20 +75,70 @@ class HHParser(BaseParser):
             if second_pass and len(fresh) >= _RSS_PAGE_CAP:
                 for job in self._fetch_query(query, by_date=False):
                     if job.id not in seen:
-                        seen.add(job.id)
+                        seen[job.id] = job
                         jobs.append(job)
                         added_by_second += 1
 
         if second_pass:
             logger.info("HH: +%d вакансий вторым проходом (по релевантности)",
                         added_by_second)
+
+        # Слежка за работодателями по employer_id: ВСЕ их вакансии, а не только те,
+        # где крипто-слово попало в текст запроса. Скан 15.09.2026 показал, что
+        # роли малых крипто-компаний называются «Специалист казначейства», «Казначей»,
+        # «Специалист бэк-офиса» — по тексту их не найти ни одним разумным запросом.
+        # Метка `employer_watch` ставит вакансию в начало очереди пересмотра отказов
+        # (scheduler._rescue_order): слежка идёт в конце выдачи, и без метки её срезал
+        # бы потолок пересмотра. Ставим и на вакансию, уже найденную текстовым запросом.
+        added_by_employers = 0
+        for emp in self.cfg.get("employer_ids") or []:
+            for job in self._fetch_employer(emp, second_pass=second_pass):
+                if job.id in seen:
+                    seen[job.id].raw["employer_watch"] = True
+                    continue
+                job.raw["employer_watch"] = True
+                seen[job.id] = job
+                jobs.append(job)
+                added_by_employers += 1
+        if self.cfg.get("employer_ids"):
+            logger.info("HH: +%d вакансий слежкой за работодателями",
+                        added_by_employers)
         return jobs
 
-    def _fetch_query(self, query: str, by_date: bool = True) -> list[Job]:
-        params = {
-            "text": query,
-            "area": self.cfg.get("area", 113),
-        }
+    def _fetch_employer(self, emp: dict, second_pass: bool = True) -> list[Job]:
+        """Вакансии одного работодателя с защитой от неверного id.
+
+        ⚠️ Несуществующий employer_id hh.ru НЕ отвергает, а молча игнорирует и отдаёт
+        обычную выдачу по всей России. Проверено 15.09.2026: id 99999999999 вернул
+        20 вакансий Lamoda и «Алабуги». Поэтому оставляем только вакансии, у которых
+        компания совпадает с `name` из конфига, а полностью чужую выдачу — в лог.
+        """
+        emp_id = emp.get("id")
+        if not emp_id:
+            return []
+        fresh = self._fetch_query(None, by_date=True, employer_id=emp_id)
+        if second_pass and len(fresh) >= _RSS_PAGE_CAP:
+            known = {j.id for j in fresh}
+            fresh += [j for j in self._fetch_query(None, by_date=False, employer_id=emp_id)
+                      if j.id not in known]
+        name = _norm_company(emp.get("name"))
+        if not name:
+            return fresh
+        own = [j for j in fresh if name in _norm_company(j.company)]
+        if fresh and not own:
+            logger.warning(
+                "HH employer_id=%s (%s): в выдаче ни одной вакансии этой компании — "
+                "id неверный или компания переименована; отброшено %d чужих",
+                emp_id, emp.get("name"), len(fresh))
+        return own
+
+    def _fetch_query(self, query: str | None, by_date: bool = True,
+                     employer_id: int | str | None = None) -> list[Job]:
+        params = {"area": self.cfg.get("area", 113)}
+        if query:
+            params["text"] = query
+        if employer_id:
+            params["employer_id"] = employer_id
         if by_date:
             params["order_by"] = "publication_time"
         try:

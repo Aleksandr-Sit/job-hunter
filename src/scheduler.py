@@ -146,7 +146,22 @@ def _enrich_hh_and_rescore(jobs: list, limit: int = 120) -> list:
     return kept
 
 
-def _rescue_hh_rejects(jobs: list, limit: int = 220) -> list:
+def _rescue_order(jobs: list) -> list:
+    """Порядок очереди пересмотра: слежка за работодателями → свежие → старые.
+
+    Выдача HH идёт в порядке запросов, слежка — в самом конце, поэтому потолок
+    пересмотра срезал именно её (ревизия 17.09.2026). Свежесть вторым ключом:
+    не влезшие в потолок остаются в очереди (см. `_rescue_hh_rejects`), и
+    порядок по дате стабилен — старое ждёт свободного места, а не вытесняет
+    свежее по кругу. Без даты — в конец.
+    """
+    def key(j):
+        ts = j.published_at.timestamp() if j.published_at else float("-inf")
+        return (not j.raw.get("employer_watch"), -ts)
+    return sorted(jobs, key=key)
+
+
+def _rescue_hh_rejects(jobs: list, limit: int = 220) -> tuple[list, list]:
     """Пересматривает отказы HH, вынесенные по обрезанному описанию.
 
     Зачем. RSS отдаёт медианно 126 символов, то есть решение «нет ролевых слов /
@@ -162,16 +177,28 @@ def _rescue_hh_rejects(jobs: list, limit: int = 220) -> list:
     Берём только «мягкие» отказы (см. `is_soft_reject`): отказ по английскому или
     гражданству полным описанием не переворачивается, качать его — впустую тратить
     ~0.8 МБ и 0.87 с на вакансию.
+
+    Возвращает `(recovered, deferred)`. `deferred` — не пересмотренные: хвост за
+    потолком и, если hh.ru не отдал описания (антибот), цели без описания. Их НЕ
+    помечают увиденными — иначе они не вернулись бы до следующей смены критериев.
+    Потолок упирался в каждом прогоне (лог 14–17.09.2026: «219 из 220»).
     """
     if not jobs:
-        return []
+        return [], []
     from .parsers.hh_enrich import enrich
 
-    targets = jobs[:limit]
+    queue = _rescue_order(jobs)
+    targets, deferred = queue[:limit], queue[limit:]
+    before = {j.id: j.description for j in targets}
     stats = enrich(targets, limit=limit)
-    if not stats.enriched:
-        logger.info("HH пересмотр отказов: не дотянулось ни одного описания")
-        return []
+    watched = sum(1 for j in jobs if j.raw.get("employer_watch"))
+
+    if not stats.healthy:
+        # Единичный сбой страницы при здоровом прогоне помечается как обычно: иначе
+        # битая страница вечно занимала бы голову очереди.
+        unfetched = [j for j in targets if j.description == before[j.id]]
+        deferred = unfetched + deferred
+        targets = [j for j in targets if j.description != before[j.id]]
 
     recovered = []
     for j in targets:
@@ -181,11 +208,13 @@ def _rescue_hh_rejects(jobs: list, limit: int = 220) -> list:
             j.match_reasons = best["reasons"]
             recovered.append(j)
 
-    logger.info("HH пересмотр отказов: дообогащено %d из %d, вернулось в отбор %d",
-                stats.enriched, len(targets), len(recovered))
+    logger.info("HH пересмотр отказов: в очереди %d (слежка %d), пересмотрено %d "
+                "(дообогащено %d), отложено %d, вернулось в отбор %d",
+                len(jobs), watched, len(targets), stats.enriched, len(deferred),
+                len(recovered))
     for j in recovered[:5]:
         logger.info("  возвращена [%s] %s", j.match_role, j.title[:65])
-    return recovered
+    return recovered, deferred
 
 
 def _warn_if_provider_switched() -> None:
@@ -281,21 +310,26 @@ def run_once() -> None:
     # чтобы отсеянные здесь попали в mark_prefilter_seen ниже и не вернулись
     # на следующем прогоне. Без повторного score_job вся стадия бессмысленна:
     # описание приехало бы, а решение осталось бы принятым по заголовку.
+    deferred_ids: set = set()
     if cfg.get("hh_enrich", {}).get("enabled", True):
         _hh_cfg = cfg.get("hh_enrich", {})
         new_jobs = _enrich_hh_and_rescore(new_jobs, limit=_hh_cfg.get("limit", 120))
         # ...и только потом пересматриваем отказы: дедуп уже прошёл, копии не качаем.
-        rescued = _rescue_hh_rejects(hh_retry, limit=_hh_cfg.get("retry_limit", 220))
+        rescued, deferred = _rescue_hh_rejects(hh_retry, limit=_hh_cfg.get("retry_limit", 220))
+        deferred_ids = {j.id for j in deferred}
         if rescued:
             new_jobs = dedupe_jobs(new_jobs + rescued)
 
     # Провизорный seen — только детерминированно отсеянное, с отпечатком версии:
     # смена критериев переоткроет эти отказы. Кандидатов в AI помечает match_jobs
     # финальным вердиктом после успешного скоринга батча (сбой AI не теряет вакансии).
+    # Отложенные пересмотром не помечаются: остаются в очереди следующего прогона.
     ai_ids = {j.id for j in new_jobs}
-    storage.mark_prefilter_seen([j for j in unseen if j.id not in ai_ids], pf_version)
+    storage.mark_prefilter_seen(
+        [j for j in unseen if j.id not in ai_ids and j.id not in deferred_ids], pf_version)
 
-    logger.info("After dedup: %d unseen | After pre-filter: %d to AI", len(unseen), len(new_jobs))
+    logger.info("After dedup: %d unseen (из них отложено до пересмотра HH: %d) | "
+                "After pre-filter: %d to AI", len(unseen), len(deferred_ids), len(new_jobs))
     # Пограничные вакансии — чтобы пересев был виден в логе без ручной диагностики
     for s, j, rs in sorted(near_miss, key=lambda x: -x[0])[:3]:
         logger.info("Near-miss [%d] %s @ %s | %s", s, j.title[:60], j.company[:30], "; ".join(rs)[:150])
