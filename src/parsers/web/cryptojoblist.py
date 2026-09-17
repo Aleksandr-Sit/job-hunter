@@ -60,13 +60,11 @@ class CryptoJobListParser(BaseParser):
 
         block = soup.find("div", class_=self._DESC_CLASS)
         if block:
-            return block.get_text(separator="
-", strip=True)
+            return block.get_text(separator="\n", strip=True)
         main = soup.find("article") or soup.find("main")
         if not main:
             return ""
-        text = main.get_text(separator="
-", strip=True)
+        text = main.get_text(separator="\n", strip=True)
         for marker in self._FOOTER_MARKERS:
             pos = text.find(marker)
             if pos > 0:
