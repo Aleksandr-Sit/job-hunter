@@ -57,7 +57,7 @@ class HHParser(BaseParser):
             return []
 
         second_pass = self.cfg.get("second_pass", True)
-        seen: set[str] = set()
+        seen: dict[str, Job] = {}
         jobs: list[Job] = []
         added_by_second = 0
 
@@ -65,7 +65,7 @@ class HHParser(BaseParser):
             fresh = self._fetch_query(query, by_date=True)
             for job in fresh:
                 if job.id not in seen:
-                    seen.add(job.id)
+                    seen[job.id] = job
                     jobs.append(job)
 
             # Второй проход имеет смысл ТОЛЬКО для запросов, упёршихся в потолок:
@@ -75,7 +75,7 @@ class HHParser(BaseParser):
             if second_pass and len(fresh) >= _RSS_PAGE_CAP:
                 for job in self._fetch_query(query, by_date=False):
                     if job.id not in seen:
-                        seen.add(job.id)
+                        seen[job.id] = job
                         jobs.append(job)
                         added_by_second += 1
 
@@ -87,13 +87,19 @@ class HHParser(BaseParser):
         # где крипто-слово попало в текст запроса. Скан 15.09.2026 показал, что
         # роли малых крипто-компаний называются «Специалист казначейства», «Казначей»,
         # «Специалист бэк-офиса» — по тексту их не найти ни одним разумным запросом.
+        # Метка `employer_watch` ставит вакансию в начало очереди пересмотра отказов
+        # (scheduler._rescue_order): слежка идёт в конце выдачи, и без метки её срезал
+        # бы потолок пересмотра. Ставим и на вакансию, уже найденную текстовым запросом.
         added_by_employers = 0
         for emp in self.cfg.get("employer_ids") or []:
             for job in self._fetch_employer(emp, second_pass=second_pass):
-                if job.id not in seen:
-                    seen.add(job.id)
-                    jobs.append(job)
-                    added_by_employers += 1
+                if job.id in seen:
+                    seen[job.id].raw["employer_watch"] = True
+                    continue
+                job.raw["employer_watch"] = True
+                seen[job.id] = job
+                jobs.append(job)
+                added_by_employers += 1
         if self.cfg.get("employer_ids"):
             logger.info("HH: +%d вакансий слежкой за работодателями",
                         added_by_employers)

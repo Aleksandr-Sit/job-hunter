@@ -126,6 +126,7 @@ class TestConfig:
     @staticmethod
     def _hh():
         import yaml
+
         from src.parsers.hh_parser import _CONFIG
         return yaml.safe_load(_CONFIG.read_text(encoding="utf-8"))["parsers"]["hh"]
 
