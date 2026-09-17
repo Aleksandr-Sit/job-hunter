@@ -17,7 +17,21 @@ _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from src.matcher.pre_filter import CRITERIA, score_vacancy  # noqa: E402
+from src.matcher.pre_filter import CRITERIA, score_job  # noqa: E402
+from src.models import Job  # noqa: E402
+
+
+def _as_job(j: dict) -> Job:
+    """Словарь дампа → Job, чтобы скорить ТЕМ ЖЕ путём, что и бот.
+
+    Раньше замер звал `score_vacancy` напрямую и тем самым проходил мимо
+    `score_job`: не подмешивалась локация (штраф «только офис») и не работал
+    стоп-лист работодателей. Цифры замера расходились с боевыми (ревизия
+    17.09.2026)."""
+    return Job(id=j.get("id") or "", title=j.get("title") or "",
+               company=j.get("company") or "", description=j.get("description") or "",
+               url=j.get("url") or "", source=j.get("source") or "",
+               location=j.get("location"), is_remote=bool(j.get("is_remote")))
 
 
 def load_jobs() -> list[dict]:
@@ -40,7 +54,7 @@ def main() -> None:
     gate_fail = Counter()
     passers = []   # (score, role, job, reasons, recommend)
     for j in jobs:
-        res = {r: score_vacancy(j["title"], j["description"], r) for r in CRITERIA["roles"]}
+        res = {v["role"]: v for v in score_job(_as_job(j))["all"]}
         gated = {r: v for r, v in res.items() if v["passed_gate"]}
         if not gated:
             gate_fail[" | ".join(sorted({v["reasons"][0] for v in res.values()}))] += 1
