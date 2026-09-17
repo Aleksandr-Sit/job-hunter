@@ -13,7 +13,7 @@ from urllib3.util.retry import Retry
 
 from ...models import Job
 from ..base import BaseParser
-from ..normalize import clean_description, detect_remote
+from ..normalize import clean_description, detect_remote, html_to_text, onsite_note
 
 logger = logging.getLogger(__name__)
 
@@ -81,20 +81,32 @@ class LeverParser(BaseParser):
         except Exception:
             published_at = None
 
-        # Описание: text.description + lists
-        text_block = item.get("text", "") or ""
-        lists = item.get("lists", []) or []
-        description_parts = [text_block]
-        for lst in lists:
-            description_parts.append(lst.get("text", "") + "\n" + lst.get("content", ""))
+        # Описание. ⚠️ `text` у Lever — это НАЗВАНИЕ вакансии, а не текст: до
+        # 17.09.2026 в описание клался именно он, и гейты видели заголовок плюс
+        # HTML-разметку списков. Тело лежит в `descriptionPlain`, хвост (условия,
+        # требования к языкам) — в `additionalPlain`, пункты — в `lists[].content`
+        # в виде HTML. Замер ревью на 413 вакансиях: 9 решений меняются, все
+        # сейчас потеряны (Binance «Web3 Operations» 32 → 44).
+        description_parts = [item.get("descriptionPlain") or
+                             html_to_text(item.get("description"))]
+        for lst in item.get("lists", []) or []:
+            description_parts.append(
+                (lst.get("text", "") + "\n" + html_to_text(lst.get("content"))).strip())
+        description_parts.append(item.get("additionalPlain") or
+                                 html_to_text(item.get("additional")))
         description = clean_description(
             "\n\n".join(p for p in description_parts if p).strip())
 
-        # Единая логика формата — src/parsers/normalize.py. Одиночное «remote»
-        # в тексте сигналом не считается (встречается в «remote troubleshooting»,
-        # «flexibility of remote work» у офисных вакансий).
+        # Единая логика формата — src/parsers/normalize.py. `workplaceType`
+        # (Remote / Hybrid / On-site) у Lever достоверен и идёт первым приоритетом;
+        # одиночное «remote» в тексте сигналом не считается (встречается в
+        # «remote troubleshooting», «flexibility of remote work» у офисных вакансий).
+        workplace = item.get("workplaceType", "") or ""
         is_remote = detect_remote(location=f"{location} {commitment}",
-                                  description=description)
+                                  description=description,
+                                  workplace_type=workplace)
+        # Формат работы — текстом в описание: скоринг читает текст, а не поля Job.
+        description += onsite_note(workplace)
 
         return Job(
             id=f"lv_{item['id']}",
