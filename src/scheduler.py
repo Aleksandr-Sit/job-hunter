@@ -254,7 +254,9 @@ def run_once() -> None:
         except Exception as e:
             return parser.name, [], e
 
-    with ThreadPoolExecutor(max_workers=len(parsers)) as pool:
+    # max(1, …): реестр теперь может вернуть пустой список (все парсеры выключены
+    # или не поднялись), а ThreadPoolExecutor с max_workers=0 бросает ValueError.
+    with ThreadPoolExecutor(max_workers=max(1, len(parsers))) as pool:
         futures = {pool.submit(_run_parser, p): p for p in parsers}
         for future in as_completed(futures):
             name, jobs, err = future.result()

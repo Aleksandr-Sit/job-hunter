@@ -7,45 +7,47 @@
 """
 from __future__ import annotations
 
+import importlib
+import logging
+
+logger = logging.getLogger(__name__)
+
+# (ключ в settings.yaml, модуль, класс, включён по умолчанию)
+_SPEC = [
+    ("hh", ".hh_parser", "HHParser", True),
+    ("remoteok", ".web.remoteok", "RemoteOKParser", True),
+    ("cryptojoblist", ".web.cryptojoblist", "CryptoJobListParser", True),
+    ("web3career", ".web.web3career", "Web3CareerParser", True),
+    ("laborx", ".web.laborx", "LaborXParser", True),
+    ("remote3", ".web.remote3", "Remote3Parser", True),
+    ("wellfound", ".web.wellfound", "WellFoundParser", False),
+    ("contra", ".web.contra", "ContraParser", False),
+    ("ashby", ".web.ashby", "AshbyParser", True),
+    ("greenhouse", ".web.greenhouse", "GreenhouseParser", True),
+    ("lever", ".web.lever", "LeverParser", True),
+    ("linkedin", ".web.linkedin", "LinkedInParser", False),
+    ("habr", ".web.habr", "HabrCareerParser", True),
+    ("telegram", ".telegram_parser", "TelegramParser", True),
+]
+
 
 def build_parsers(cfg: dict) -> list:
-    """Собирает включённые в конфиге парсеры. Импорты внутри — чтобы падение
-    одного модуля не роняло весь список на этапе импорта."""
-    from .hh_parser import HHParser
-    from .telegram_parser import TelegramParser
-    from .web.ashby import AshbyParser
-    from .web.contra import ContraParser
-    from .web.cryptojoblist import CryptoJobListParser
-    from .web.greenhouse import GreenhouseParser
-    from .web.habr import HabrCareerParser
-    from .web.laborx import LaborXParser
-    from .web.lever import LeverParser
-    from .web.linkedin import LinkedInParser
-    from .web.remote3 import Remote3Parser
-    from .web.remoteok import RemoteOKParser
-    from .web.web3career import Web3CareerParser
-    from .web.wellfound import WellFoundParser
+    """Собирает включённые в конфиге парсеры.
 
-    # (ключ в settings.yaml, класс, включён по умолчанию)
-    spec = [
-        ("hh", HHParser, True),
-        ("remoteok", RemoteOKParser, True),
-        ("cryptojoblist", CryptoJobListParser, True),
-        ("web3career", Web3CareerParser, True),
-        ("laborx", LaborXParser, True),
-        ("remote3", Remote3Parser, True),
-        ("wellfound", WellFoundParser, False),
-        ("contra", ContraParser, False),
-        ("ashby", AshbyParser, True),
-        ("greenhouse", GreenhouseParser, True),
-        ("lever", LeverParser, True),
-        ("linkedin", LinkedInParser, False),
-        ("habr", HabrCareerParser, True),
-        ("telegram", TelegramParser, True),
-    ]
-
+    Импорт и создание — ПО ОДНОМУ и под защитой. До 17.09.2026 все импорты стояли
+    одним блоком в начале функции: сломанная зависимость или опечатка в одном
+    парсере роняла весь прогон, хотя докстрока обещала ровно обратное. Конструктор
+    защищён тоже — часть парсеров читает `settings.yaml` прямо в `__init__`.
+    """
     parsers_cfg = cfg.get("parsers", {})
-    return [
-        cls() for key, cls, default in spec
-        if parsers_cfg.get(key, {}).get("enabled", default)
-    ]
+    out = []
+    for key, module, cls_name, default in _SPEC:
+        if not parsers_cfg.get(key, {}).get("enabled", default):
+            continue
+        try:
+            cls = getattr(importlib.import_module(module, __package__), cls_name)
+            out.append(cls())
+        except Exception as e:
+            logger.error("Парсер %s не поднялся (%s: %s) — прогон идёт без него",
+                         key, type(e).__name__, str(e)[:150])
+    return out
