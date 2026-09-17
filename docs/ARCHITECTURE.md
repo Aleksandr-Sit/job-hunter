@@ -26,7 +26,8 @@ Pre-filter — src/matcher/pre_filter.py, rules in config/criteria.yaml
         │  spending any LLM budget)
         ▼
 AI Matching — src/matcher/cerebras_matcher.py
-   Cerebras (Llama 3.3 70B, free tier, OpenAI-compatible SDK), batches of 5
+   gpt-oss-120b via OpenRouter (registry of OpenAI-compatible providers,
+   AI_PROVIDER_ORDER in .env; 401/402/403 = switch provider), batches of 5
    jobs/request, scores 0-100 against the candidate's resume/skills/preferences
         │  checkpointed per batch → data/matches.jsonl + match_cache table
         │  (safe to restart mid-run without re-paying for already-scored jobs)
@@ -57,7 +58,7 @@ management"). Splitting them means:
 
 `mark_seen_batch()` runs in `scheduler.py:run_once()` *before* AI matching, not after.
 This means a restart mid-run never re-fetches or re-pre-filters jobs already seen —
-but it also means if the Cerebras call fails for a given job (timeout, malformed
+but it also means if the LLM call fails for a given job (timeout, malformed
 response), that job is gone for good; it won't be retried on the next scheduled run.
 
 This is a deliberate trade-off, not an oversight: the alternative (mark-seen only
@@ -97,7 +98,7 @@ README's Setup section).
 | Решение | Почему | Цена |
 |---|---|---|
 | Regex/keyword pre-filter, не ML-классификатор | Бесплатно, мгновенно, и главное — объяснимо: для каждого отказа есть причина (`reasons` в `score_vacancy()`), можно за секунды понять, почему вакансия отсеялась, и поправить список в `criteria.yaml` | Требует ручной поддержки списков ключевых слов; не обобщается на формулировки, которых там нет |
-| Cerebras (free tier) вместо платного провайдера | Бюджет проекта — 0₽; OpenAI-совместимый SDK даёт лёгкую миграцию между провайдерами (этот проект уже пережил Claude → Groq-style → OpenRouter → Cerebras) | Free tier — это rate limit и отсутствие SLA; геоблок/прерывание провайдера не редкость, поэтому есть retry+backoff и явный геоблок-шорткат |
+| Реестр OpenAI-совместимых провайдеров (OpenRouter основной, порядок в `AI_PROVIDER_ORDER`) вместо одного жёстко зашитого | Бюджет проекта — копейки (~$0.50/мес по факту); один SDK даёт миграцию между провайдерами (проект пережил Claude → Cerebras → OpenRouter), а отказ одного не останавливает прогон | У Cerebras 18.08.2026 кончилась квота, и пока он был единственным, бот двое суток не оценивал вакансии. Отсюда правило: 401/402/403 = «провайдер отказал целиком, переключайся», 429/5xx = «повтори тому же» |
 | `mark_seen` до AI-матчинга, не после | Идемпотентный рестарт — повторный запуск не пере-парсит и не пере-фильтрует уже виденное | Вакансия, на которой упал AI-вызов, не ретраится в следующем цикле — осознанный компромисс, не баг |
 | Polling-бот в daemon-потоке внутри того же контейнера, не webhook | Не нужен публичный HTTPS-эндпоинт — бот работает за любым NAT/firewall без доп. инфраструктуры | Поток и scheduler делят жизненный цикл контейнера — нельзя перезапустить независимо |
 | SQLite, не Postgres/Redis | Один писатель, один контейнер, датасет — десятки МБ; внешняя БД добавила бы зависимость без выгоды на этом масштабе | Не масштабируется горизонтально — не проблема для personal-tool на одном VPS |

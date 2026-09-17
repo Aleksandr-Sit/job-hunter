@@ -16,7 +16,7 @@
 - **PROFILE.md — мастер.** `config/profile/` держи в соответствии с ним; второй источник правды не создавай.
 - Рабочий пайплайн (Docker, парсеры, `pre_filter.py`) **не ломать**; уже сделанную CIS/русскоязычную доработку **не дублировать**.
 - Крупные изменения — на отдельной ветке, через **Plan mode**, с диффом. Перед пушем проверять локально `docker-compose up --build`. На VPS файлы руками не править.
-- Критерии целевых вакансий (четыре роли: **Crypto/Web3 Operations**, **Web3 Support**, **AI Automation** — индустриально-независимая, **Web3 QA** — ручное тестирование) живут в `config/criteria.yaml`, логика — в `src/matcher/pre_filter.py`. `target_criteria_REFERENCE.py` — только эталон, как модуль НЕ подключать.
+- Критерии целевых вакансий живут в `config/criteria.yaml`, логика — в `src/matcher/pre_filter.py`. Ролей **семь**: **Crypto/Web3 Operations**, **Web3 Support**, **AI Automation** (индустриально-независимая), **Web3 QA** (ручное тестирование), **AML/комплаенс**, **Поддержка в финтехе/IT**, **Удалённые продажи** на входящих. `target_criteria_REFERENCE.py` — только эталон, как модуль НЕ подключать.
 - **Репозиторий ПУБЛИЧНЫЙ (портфолио).** Поэтому личные данные в него не коммитятся: `.env`, `PROFILE.md`, `config/profile/*` (кроме `*.example`), `docs/resume/` — всё в `.gitignore`. Профиль доставляется на VPS через `scp` (как `.env`) и подключается bind-mount'ом. ⚠️ После `git reset --hard` на VPS папка `config/profile` пересоздаётся → нужен `docker compose up -d --force-recreate`, иначе bind-mount остаётся на удалённом inode и бот не видит профиль.
 
 ## Контекст кандидата

@@ -8,22 +8,22 @@
 ![CI](https://github.com/Aleksandr-Sit/job-hunter/actions/workflows/ci.yml/badge.svg)
 ![tests](https://img.shields.io/badge/tests-179%20passing-brightgreen)
 
-Automated job search system for Web3/DeFi operations roles. Parses ~3100 vacancies from 11 sources twice a day, filters them down with a two-stage pipeline, and sends the survivors to Telegram. Running in production since June 2026.
+Automated job search system for Web3/DeFi operations roles. Parses ~4700 vacancies from 11 sources three times a day, filters them down with a two-stage pipeline, and sends the survivors to Telegram. Running in production since June 2026.
 
 ## ✨ Highlights
 
 - **Production 24/7** — 11 sources → pre-filter → AI scoring against a candidate profile → job cards in Telegram, on a VPS.
 - **Parser composition** — public ATS APIs (Greenhouse / Lever / Ashby) + LinkedIn guest API + HH.ru + 13 Telegram channels, unified behind one interface.
 - **EN/RU keyword engine** — stem-matching pre-filter (role gates + weighted scoring) that ranks Russian and English vacancies equally.
-- **AI matching** — Cerebras with a weighted model, human-readable reasons, and a versioned "seen" gate that re-opens jobs on recalibration.
+- **AI matching** — any OpenAI-compatible provider (OpenRouter `gpt-oss-120b` in production, automatic failover to a backup on 401/402/403) with a weighted model, human-readable reasons, and a versioned "seen" gate that re-opens jobs on recalibration.
 - **Every tuning decision is measured, not guessed** — see [Decisions made by measurement](#decisions-made-by-measurement) below. A/B on a frozen batch runs before every threshold change.
 
 ## How it works
 
 ```mermaid
 flowchart TD
-    A["Sources · ~3100 jobs/run<br/>ATS API · LinkedIn · HH · Telegram · Habr Career"] --> B["Pre-filter<br/>role gates + weighted scoring · EN/RU stem-matching"]
-    B -->|passes gate| C["AI Matching<br/>Cerebras — score 0–100 vs profile"]
+    A["Sources · ~4700 jobs/run<br/>ATS API · LinkedIn · HH · Telegram · Habr Career"] --> B["Pre-filter<br/>role gates + weighted scoring · EN/RU stem-matching"]
+    B -->|passes gate| C["AI Matching<br/>gpt-oss-120b — score 0–100 vs profile"]
     B -->|rejected| X["seen-gate · versioned<br/>(re-opens on recalibration)"]
     C -->|score &ge; 55| D["Telegram<br/>job cards, sorted by relevance"]
     C -->|score &lt; 55| X
@@ -93,7 +93,7 @@ Reproduce it yourself: `python tools/diag/funnel_check.py`.
 
 ## AI Matching
 
-Each job is scored against the candidate profile (resume + skills + preferences) using **Cerebras** inference (gpt-oss-120b model). Batch processing: 5 jobs per request.
+Each job is scored against the candidate profile (resume + skills + preferences) using **gpt-oss-120b** (OpenRouter in production; the provider registry falls back to a backup if one refuses). Batch processing: 5 jobs per request.
 
 Scoring:
 - **90–100** — perfect match
@@ -168,7 +168,7 @@ cutting them off. The queries were reverted and the negative result written into
 **Deduplication ran one stage too late.**
 Near-duplicates (the same role posted under several `geoId`s, or titles differing only
 by a double space) were collapsed just before sending — so Telegram never showed
-copies, but every copy had already consumed its own slice of the Cerebras budget.
+copies, but every copy had already consumed its own slice of the LLM budget.
 Moving the collapse ahead of the AI call removes **34 of 279 candidates (12%)** on a
 full batch.
 
@@ -250,7 +250,7 @@ docker compose logs -f   # watch logs
 
 > **Important — switching from native to Docker:** If you previously ran the bot natively, SQLite may have left `data/jobs.db-wal` and `data/jobs.db-shm` files. These cause a `disk I/O error` inside Docker. Before the first `docker compose up`, stop any running Python processes and delete those two files if they exist.
 
-Runs twice a day on cron (`0 6,14 * * *` UTC). Restarts automatically on failure (`restart: unless-stopped`).
+Runs three times a day on cron (`0 6,10,14 * * *` UTC = 10:00/14:00/18:00 Samara). Restarts automatically on failure (`restart: unless-stopped`).
 
 ## Deploy to VPS (recommended)
 
@@ -291,7 +291,7 @@ job-hunter/
 │   ├── parsers/                # HH.ru, Telegram, Greenhouse, Lever, Ashby, LinkedIn, web boards
 │   │   └── normalize.py        # single source of truth for remote/office detection
 │   ├── matcher/
-│   │   ├── cerebras_matcher.py # Cerebras AI batch matching
+│   │   ├── cerebras_matcher.py # AI batch matching (provider registry)
 │   │   └── pre_filter.py      # gate + weighted scoring before AI
 │   ├── bot/
 │   │   ├── notifier.py         # sends messages, builds keyboard
@@ -309,7 +309,7 @@ job-hunter/
 ## Tech stack
 
 - **Python 3.11+**
-- **Cerebras** — LLM inference (free tier, gpt-oss-120b)
+- **OpenRouter** — LLM inference (gpt-oss-120b); any OpenAI-compatible provider works, order in `AI_PROVIDER_ORDER`
 - **APScheduler** — job scheduling
 - **python-telegram-bot** — Telegram notifications
 - **BeautifulSoup4 + requests** — web scraping
