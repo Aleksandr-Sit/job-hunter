@@ -85,8 +85,10 @@ def send_daily_summary(count_parsed: int, count_sent: int, sources: list[str]) -
     asyncio.run(_send_text_async(text))
 
 
-def send_text(text: str) -> None:
-    asyncio.run(_send_text_async(text))
+def send_text(text: str) -> bool:
+    """True — Telegram принял сообщение. Результат возвращаем, а не глотаем:
+    дайджест не проверял его и молча не приходил (ревизия 17.09.2026)."""
+    return asyncio.run(_send_text_async(text))
 
 
 # ── тест ──────────────────────────────────────────────────────────────────────
