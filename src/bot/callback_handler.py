@@ -3,7 +3,9 @@ import asyncio
 import html
 import logging
 import os
+import re
 from datetime import datetime, timezone
+from functools import wraps
 
 import telegram
 from telegram import Update
@@ -12,6 +14,11 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Cont
 from .. import storage
 
 logger = logging.getLogger(__name__)
+
+# Ведущие эмодзи/пробелы в заголовке карточки. `\w` в Python по умолчанию знает
+# кириллицу, поэтому русские заголовки не срезаются; открывающая скобка оставлена
+# намеренно — с неё начинаются заголовки вида «(Senior) Analyst».
+_LEADING_SYMBOLS = re.compile(r"^[^\w(]+")
 
 
 async def _on_skip(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -33,7 +40,10 @@ def _parse_card(text: str) -> tuple[str, str, int | None]:
     """Достаёт заголовок/компанию/балл из текста карточки (для записи в трекер).
     Формат карточки задан в formatter.py; при изменении — деградирует мягко."""
     lines = [ln.strip() for ln in (text or "").split("\n") if ln.strip()]
-    title = lines[0].lstrip("🎯 ").strip() if lines else ""
+    # Карточка начинается с эмодзи БАЛЛА (🔥/⭐/✅/👀), а не с 🎯: `lstrip("🎯 ")`
+    # срезал не тот символ, и в трекер попадал заголовок с эмодзи — все 10 записей
+    # в `applications` (ревизия 17.09.2026). Режем любой ведущий не-буквенный знак.
+    title = _LEADING_SYMBOLS.sub("", lines[0]).strip() if lines else ""
     company = ""
     if len(lines) > 1:
         company = lines[1].split("·")[0].strip()
@@ -167,14 +177,42 @@ async def _on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.error("Callback listener error: %s", context.error)
 
 
+def owner_only(handler):
+    """Пускает к боту только владельца (`TELEGRAM_CHAT_ID`).
+
+    До 17.09.2026 фильтра не было вообще: любой, кто узнает имя бота, получал по
+    `/applications` список откликов, а кнопками мог дёргать генерацию писем за
+    счёт квоты владельца. Оборачиваем КАЖДЫЙ хендлер, а не только команду:
+    кнопки приходят через того же бота.
+
+    `TELEGRAM_CHAT_ID` не задан — пропускаем всех и пишем в лог: иначе правка
+    молча отключила бы кнопки на машине без переменной.
+    """
+    @wraps(handler)
+    async def guard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        owner = (os.environ.get("TELEGRAM_CHAT_ID") or "").strip()
+        chat = update.effective_chat
+        chat_id = str(chat.id) if chat else ""
+        if not owner:
+            logger.warning("TELEGRAM_CHAT_ID не задан — бот отвечает любому чату")
+        elif chat_id != owner:
+            logger.warning("Чужой чат %s: запрос к %s отклонён",
+                           chat_id, getattr(handler, "__name__", "?"))
+            if update.callback_query:
+                await update.callback_query.answer(text="Этот бот личный")
+            return None
+        return await handler(update, context)
+    return guard
+
+
 def run_listener() -> None:
     """Блокирующий polling-цикл. Вызывать в отдельном потоке (не в главном)."""
     token = os.environ["TELEGRAM_BOT_TOKEN"]
     app = Application.builder().token(token).build()
-    app.add_handler(CallbackQueryHandler(_on_skip, pattern=r"^skip_"))
-    app.add_handler(CallbackQueryHandler(_on_applied, pattern=r"^applied_"))
-    app.add_handler(CallbackQueryHandler(_on_letter, pattern=r"^letter_"))
-    app.add_handler(CommandHandler("applications", _cmd_applications))
+    app.add_handler(CallbackQueryHandler(owner_only(_on_skip), pattern=r"^skip_"))
+    app.add_handler(CallbackQueryHandler(owner_only(_on_applied), pattern=r"^applied_"))
+    app.add_handler(CallbackQueryHandler(owner_only(_on_letter), pattern=r"^letter_"))
+    app.add_handler(CommandHandler("applications", owner_only(_cmd_applications)))
     app.add_error_handler(_on_error)
     logger.info("Telegram callback listener started")
     app.run_polling(stop_signals=None, close_loop=False)

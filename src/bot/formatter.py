@@ -38,7 +38,17 @@ def _meta_line(job: Job) -> str:
     return "  ·  ".join(parts)
 
 
-_ROLE_LABELS = {"crypto_ops": "Crypto Ops", "web3_support": "Web3 Support", "ai_automation": "AI Automation"}
+# Подписи ролей для карточки. Ролей в criteria.yaml семь; подписи были только у
+# трёх, и остальные показывались сырым ключом («aml_compliance») — ревизия 17.09.2026.
+_ROLE_LABELS = {
+    "crypto_ops": "Crypto Ops",
+    "web3_support": "Web3 Support",
+    "ai_automation": "AI Automation",
+    "qa_web3": "Web3 QA",
+    "aml_compliance": "AML / Комплаенс",
+    "support_fintech": "Поддержка (финтех/IT)",
+    "sales_remote": "Продажи удалённо",
+}
 
 
 def _prefilter_line(job: Job) -> str:
