@@ -178,11 +178,25 @@ class TestDedupe:
         b = dedupe_key("ripple", "Professional  Services   Consultant")
         assert a == b
 
-    def test_location_suffix_ignored(self):
+    def test_service_suffix_ignored(self):
+        """Формат работы и занятость в скобках вакансию не различают."""
         from src.matcher.pre_filter import dedupe_key
-        a = dedupe_key("Coinbase", "Risk & Monitoring Analyst IV (EMEA)")
-        b = dedupe_key("Coinbase", "Risk & Monitoring Analyst IV (Remote)")
+        a = dedupe_key("Coinbase", "Risk & Monitoring Analyst IV (Remote)")
+        b = dedupe_key("Coinbase", "Risk & Monitoring Analyst IV")
         assert a == b
+
+    def test_region_suffix_now_distinguishes(self):
+        """ИЗМЕНЕНО 17.09.2026: регион в скобках делает вакансии РАЗНЫМИ.
+
+        Раньше выбрасывалось всё в скобках, и «Менеджер P2P (LatAm)» склеивался
+        с «Менеджер P2P (CIS — СНГ)»: до кандидата доходила одна, вторая молча
+        помечалась увиденной. Для русскоязычного кандидата это ровно та пара,
+        где различие важнее экономии на дубле.
+        """
+        from src.matcher.pre_filter import dedupe_key
+        emea = dedupe_key("Coinbase", "Risk & Monitoring Analyst IV (EMEA)")
+        apac = dedupe_key("Coinbase", "Risk & Monitoring Analyst IV (APAC)")
+        assert emea != apac
 
     def test_different_roles_kept(self):
         from src.matcher.pre_filter import dedupe_key
