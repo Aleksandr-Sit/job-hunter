@@ -85,14 +85,28 @@ _EXP_HISTORY_CONTEXT = re.compile(
     r'over\s+the\s+(?:last|past)|за\s+последн|основан|we\s+have\s+been|our\s+journey)',
     re.IGNORECASE,
 )
+# Возраст кандидата, а не стаж: «Возраст: от 18 лет», «от 18 лет и старше».
+_AGE_CONTEXT = re.compile(r'возраст|полных\s+лет|\bage\b|лет\s+и\s+старше', re.IGNORECASE)
 
 
 def _high_exp_required(blob: str) -> bool:
-    """True, если требуется 7+ лет опыта (а не просто упомянуто «N лет»)."""
-    if _EXPLICIT_HIGH_EXP.search(blob):
+    """True, если требуется 7+ лет опыта (а не просто упомянуто «N лет»).
+
+    Две ловушки, обе ловились до 17.09.2026 и роняли вакансию в ноль:
+    - «Возраст от 18 лет» — явная нижняя граница, но это ВОЗРАСТ, а не стаж;
+    - «founded over 15 years ago» — история компании. Проверка на историю была,
+      но только во второй ветке: явная граница («over 15 years») проскакивала
+      мимо неё.
+    """
+    for m in _EXPLICIT_HIGH_EXP.finditer(blob):
+        window = blob[max(0, m.start() - 40): m.end() + 40]
+        if _AGE_CONTEXT.search(window) or _EXP_HISTORY_CONTEXT.search(window):
+            continue
         return True
     for m in _YEARS_NUM_PATTERN.finditer(blob):
         window = blob[max(0, m.start() - 40): m.end() + 40]
+        if _AGE_CONTEXT.search(window):
+            continue
         if _EXP_REQ_CONTEXT.search(window) and not _EXP_HISTORY_CONTEXT.search(window):
             return True
     return False
@@ -401,6 +415,26 @@ _SHIFT_SCHEDULE = re.compile(
 )
 
 
+# Отрицание рядом с ночными сменами. «Без ночных смен» и «ночных смен нет» —
+# это ПЛЮС вакансии, а до 17.09.2026 они роняли её с 72 до 0: regex видел только
+# «ночн* смен» и не смотрел, что стоит вокруг.
+_NIGHT_NEG_BEFORE = re.compile(
+    r"(?:без|не\s+предусмотрен\w*|отсутству\w*|no|without|never)\W{0,12}$",
+    re.IGNORECASE,
+)
+_NIGHT_NEG_AFTER = re.compile(
+    r"^\W{0,12}(?:нет|не\s+предусмотрен\w*|отсутству\w*|исключен\w*)",
+    re.IGNORECASE,
+)
+
+
+def _night_negated(blob: str, match: re.Match) -> bool:
+    """True, если рядом с «ночными сменами» стоит отрицание."""
+    before = blob[max(0, match.start() - 30): match.start()]
+    after = blob[match.end(): match.end() + 30]
+    return bool(_NIGHT_NEG_BEFORE.search(before) or _NIGHT_NEG_AFTER.search(after))
+
+
 def _night_shift_mode(blob: str) -> str | None:
     """Как в вакансии устроены смены: 'core' | 'occasional' | 'shift' | None.
 
@@ -410,7 +444,7 @@ def _night_shift_mode(blob: str) -> str | None:
     """
     if _NIGHT_OCCASIONAL.search(blob):
         return "occasional"
-    if _NIGHT_CORE.search(blob):
+    if any(not _night_negated(blob, m) for m in _NIGHT_CORE.finditer(blob)):
         return "core"
     if _SHIFT_SCHEDULE.search(blob):
         return "shift"
@@ -688,7 +722,11 @@ def _prefilter_version() -> str:
     except OSError:
         criteria = ""
     source = Path(__file__).read_text(encoding="utf-8")
-    blob = criteria + source
+    # Отраслевой стоп-лист живёт в профиле, а не в criteria.yaml: без него в
+    # отпечатке правка `industries_avoid` не переоткрывала прошлые отказы —
+    # вакансии, отсеянные старым списком, не возвращались (ревизия 17.09.2026).
+    avoid = "|".join(sorted(AVOID_KW))
+    blob = criteria + source + avoid
     return hashlib.md5(blob.encode("utf-8")).hexdigest()[:12]
 
 
@@ -700,6 +738,11 @@ def _matches(term: str, text: str) -> bool:
     - одиночный токен без спецсимволов — слово целиком (`\\bслово\\b`).
     - фраза/со спецсимволами — подстрока.
     """
+    if "*" in term[:-1]:
+        # Звёздочка В СЕРЕДИНЕ («внедрени* ии») до 17.09.2026 искалась буквально
+        # и не совпадала никогда — тихо мёртвый критерий. Каждая часть — стем.
+        parts = [re.escape(p) for p in term.split("*")]
+        return re.search(r"\b" + r"\w*".join(parts), text) is not None
     if term.endswith("*"):
         stem = term[:-1]
         return re.search(r"\b" + re.escape(stem), text) is not None
@@ -931,17 +974,37 @@ def score_vacancy(title: str, text: str, role_key: str) -> dict:
     }
 
 
+_BRACKETS = re.compile(r"\(([^)]*)\)")
+# Что в скобках НЕ делает вакансию другой: формат работы, тип занятости,
+# гендерные пометки вакансий из ЕС. Регион в скобках — делает (см. dedupe_key).
+_SERVICE_BRACKETS = {
+    "remote", "удаленно", "удалённо", "hybrid", "гибрид", "onsite", "on site",
+    "office", "офис", "full time", "fulltime", "part time", "parttime",
+    "полная занятость", "частичная занятость", "контракт", "contract",
+    "m f d", "f m d", "m w d", "all genders", "anywhere", "any location",
+}
+
+
+def _drop_service_brackets(m: re.Match) -> str:
+    inner = re.sub(r"[^\w ]+", " ", m.group(1), flags=re.UNICODE)
+    inner = re.sub(r"\s+", " ", inner).strip().lower()
+    return " " if inner in _SERVICE_BRACKETS else f" {inner} "
+
+
 def dedupe_key(company: str | None, title: str | None) -> str:
     """Ключ near-дубликата: одна и та же роль на разных бордах (или в нескольких
     локациях) приходит с РАЗНЫМИ id и проходит дедуп по id. В боевом прогоне
     25.07 так пришли «Professional Services Consultant @ Ripple» ×3 и
     «Risk & Monitoring Analyst IV @ Coinbase» ×2 (HEALTH_AUDIT M2).
 
-    Нормализуем: регистр, пунктуация, лишние пробелы и хвосты локаций/уровней
-    в скобках («… (EMEA)», «… (Remote)») не должны делать вакансии разными.
+    Нормализуем регистр, пунктуацию и пробелы. Из скобок выбрасываем ТОЛЬКО
+    служебные хвосты («(Remote)», «(Full-time)»): содержательные скобки остаются,
+    иначе разные вакансии склеиваются в одну и вторая теряется навсегда — до
+    17.09.2026 «Менеджер P2P (LatAm)» и «Менеджер P2P (CIS — СНГ)» давали один
+    ключ, и вторая помечалась увиденной.
     """
     text = f"{_n(company)}|{_n(title)}"
-    text = re.sub(r"\([^)]*\)", " ", text)          # хвосты в скобках
+    text = _BRACKETS.sub(_drop_service_brackets, text)
     text = re.sub(r"[^\w|]+", " ", text, flags=re.UNICODE)
     return re.sub(r"\s+", " ", text).strip()
 
@@ -960,9 +1023,17 @@ def dedupe_jobs(pairs: list) -> list:
         # дважды — боевой случай 26.08.2026: «Требуется специалист по межбиржевой
         # торговле» пришла из @cryptovakansii и @opento_crypto с одинаковым текстом
         # и одинаковым баллом 90. Для дедупа канал — шум, дедуплицируем по заголовку.
+        # ...но тогда по одному заголовку склеиваются РАЗНЫЕ вакансии: у постов
+        # заголовок часто общий («Требуется менеджер»), а текст разный. Поэтому
+        # для Telegram к ключу добавляем отпечаток начала описания — репост того
+        # же текста в другом канале даёт тот же отпечаток и по-прежнему схлопнется,
+        # а два разных объявления — нет.
+        extra = ""
         if str(getattr(job, "source", "")).startswith("telegram"):
             company = ""
-        key = dedupe_key(company, getattr(job, "title", ""))
+            head = _n(getattr(job, "description", "") or "")[:300]
+            extra = "|" + hashlib.md5(head.encode("utf-8")).hexdigest()[:8]
+        key = dedupe_key(company, getattr(job, "title", "")) + extra
         if key in seen:
             continue
         seen.add(key)
