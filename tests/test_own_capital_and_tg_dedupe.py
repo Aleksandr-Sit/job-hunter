@@ -11,6 +11,16 @@
 from src.matcher.pre_filter import dedupe_jobs, passes_hard_gates
 from src.models import Job
 
+# Редакция 18.09.2026: та же вакансия, тот же смысл, ПЕРЕПИСАННЫЕ слова. Дословный
+# стоп-лист от 26.08 не совпал ни одной из 11 фраз, предфильтр дал 78, AI — 82.
+_ARB_REWORDED = (
+    "Требуется Специалист по межбиржевой торговле в fintech-проект. Условия: "
+    "полностью удалённый формат и гибкий график. На этапе обучения "
+    "предоставляется тестовый капитал для проведения первых операций. После "
+    "обучения рабочий формат может предполагать использование собственного "
+    "торгового капитала. Вознаграждение зависит от фактического результата."
+)
+
 _ARB = (
     "Требуется специалист по межбиржевой торговле. Условия: на период обучения "
     "и практики предоставляется первоначальный капитал. Дальнейшая работа может "
@@ -23,6 +33,23 @@ class TestOwnCapitalIsRejected:
         ok, reasons = passes_hard_gates("Специалист по межбиржевой торговле",
                                         _ARB, "crypto_ops")
         assert not ok, f"вакансия за счёт своих средств прошла гейт: {reasons}"
+
+    def test_reworded_september_edition_is_rejected(self):
+        """Работодатель переформулировал — гейт обязан ловить смысл, а не буквы."""
+        ok, reasons = passes_hard_gates(
+            "Требуется Специалист по межбиржевой торговле в fintech-проект",
+            _ARB_REWORDED, "crypto_ops")
+        assert not ok, f"переписанная редакция прошла гейт: {reasons}"
+
+    def test_commission_pay_is_not_own_capital(self):
+        """Оплата от результата — обычные комиссионные продажи, не свой капитал.
+
+        Роль `sales_remote` целевая, и срезать её по этой формулировке нельзя.
+        """
+        text = ("Менеджер по продажам на входящих заявках, удалённо. Доход "
+                "зависит от результата: оклад плюс процент с каждой сделки.")
+        ok, reasons = passes_hard_gates("Менеджер по продажам", text, "sales_remote")
+        assert not any("собственного капитала" in r for r in reasons),             f"комиссионная оплата принята за работу на свои деньги: {reasons}"
 
     def test_deposit_alone_is_not_a_stopword(self):
         """Ложное срабатывание, которое замер поймал: «депозиты» как метрика.
@@ -60,6 +87,15 @@ class TestTelegramDedupe:
         b = self._tg("tg_b", "cryptovakansii")
         b.title = "Менеджер по продажам B2B"
         assert len(dedupe_jobs([a, b])) == 2, "разные вакансии схлопнулись в одну"
+
+    def test_channel_price_prefix_does_not_split_duplicate(self):
+        """Боевой случай 18.09.2026: @workingincrypto приписывает в начало поста
+        цену («2474 »), это сдвигало окно в 300 символов и ломало отпечаток."""
+        a = self._tg("tg_a", "opento_crypto")
+        b = self._tg("tg_b", "workingincrypto")
+        b.description = "2474 \n#Вакансия\n#Trader\n\n" + _ARB
+        a.description = "#Вакансия\n#Trader\n\n" + _ARB
+        assert len(dedupe_jobs([a, b])) == 1,             "префикс с ценой снова расщепил один и тот же пост на две карточки"
 
     def test_real_employers_are_still_distinguished(self):
         """Одинаковая должность у РАЗНЫХ работодателей — не дубль."""
