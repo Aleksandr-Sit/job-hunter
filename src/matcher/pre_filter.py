@@ -503,7 +503,11 @@ _LANG_PLUS_PATTERN = re.compile(
 _OPTIONAL_SECTION = re.compile(
     r'(preferred qualification|preferred skill|nice[\s-]to[\s-]have|'
     r'bonus point|good to have|desirable|advantageous|will be a plus|'
-    r'будет плюсом|желательн|приветствуется|как преимущество)',
+    # Двоеточие входит в пометку: по нему русский заголовок отличается от оговорки
+    # (см. _marker_is_header).
+    r'будет\s+(?:плюсом|преимуществом)(?:[ \t]*:)?|'
+    r'(?:плюсом|преимуществом)\s+будет(?:[ \t]*:)?|'
+    r'желательн|приветствуется|как преимущество)',
     re.IGNORECASE,
 )
 _REQUIRED_SECTION = re.compile(
@@ -534,6 +538,19 @@ _LINKING_VERB_BEFORE = re.compile(
     r'\b(is|are|was|were|be|been|will|would|it.s|это)\s*(?:an?|the)?\s*$',
     re.IGNORECASE)
 
+# Русские заголовки «Будет преимуществом» / «Будет плюсом» / «Плюсом будет» — самые
+# частые на hh.ru, и они не признавались заголовком вообще: язык из раздела-плюшки
+# становился требованием. Боевой случай 19.09.2026: ARBI Pay, Operations Manager,
+# 58 баллов при пороге 42 — срезана гейтом за тайский под «Будет преимуществом».
+# Та же фраза бывает оговоркой («опыт в поддержке будет плюсом, но не обязателен»),
+# поэтому заголовком она считается, только если стоит отдельной строкой или с
+# двоеточием. Замер по 42 вхождениям в батче 19.08: 26 заголовков именно такой
+# формы, 11 оговорок — все посреди фразы со строчной буквы.
+_RU_OPTIONAL_MARKER = re.compile(
+    r'^(?:будет\s+(?:плюсом|преимуществом)|(?:плюсом|преимуществом)\s+будет)',
+    re.IGNORECASE)
+_LINE_START = re.compile(r'(?:^|\n)[ \t ]*$')
+
 
 def _marker_is_header(before: str, marker: str) -> bool:
     """Пометка «желательно» — ЗАГОЛОВОК раздела, а не оговорка к текущему пункту?
@@ -544,7 +561,10 @@ def _marker_is_header(before: str, marker: str) -> bool:
     без точек, и настоящий заголовок выглядит стоящим в середине фразы (Yodeck:
     «…at C1 level or above Nice to have Previous helpdesk…»).
     """
-    if not _HEADERISH_OPTIONAL.match(marker.strip()):
+    m = marker.strip()
+    if _RU_OPTIONAL_MARKER.match(m):
+        return m.endswith(":") or bool(_LINE_START.search(before[-8:]))
+    if not _HEADERISH_OPTIONAL.match(m):
         return False
     return not _LINKING_VERB_BEFORE.search(before[-16:])
 
