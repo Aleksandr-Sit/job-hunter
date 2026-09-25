@@ -160,6 +160,12 @@ _RU_LOCATION = re.compile(
 
 # ЯВНОЕ заявление удалённого формата — в отличие от одиночного слова «remote»,
 # которое встречается в «remote troubleshooting», «remote access», «remote server».
+# Строка формата работы, которую hh_enrich берёт из поля workFormats страницы
+# (в тексте после _n — нижний регистр: «формат работы (hh): on_site, hybrid»).
+_HH_WORK_FORMAT = re.compile(r"формат работы \(hh\):\s*([a-z_, ]+)")
+# Город кандидата: офис здесь — не переезд, штраф отдельный (onsite_home).
+_HOME_CITY = re.compile(r"самар|samara")
+
 _EXPLICIT_REMOTE = re.compile(
     r'(fully[\s-]remote|100%\s*remote|remote[\s-]first|work from anywhere|'
     r'remote position|remote role|fully distributed|'
@@ -962,16 +968,43 @@ def score_vacancy(title: str, text: str, role_key: str) -> dict:
     # не должна перебивать формат. Одиночное слово «remote» таким сигналом не
     # считается — оно встречается в «remote troubleshooting», «remote access».
     loc_match = re.search(r"location:\s*([^\n]+)", blob)
+    loc_line = loc_match.group(1) if loc_match else ""
+    foreign_office = False
     if loc_match and not _EXPLICIT_REMOTE.search(blob):
-        loc_line = loc_match.group(1)
         if not _RU_LOCATION.search(loc_line) and not _hits(CRITERIA["relocation_ok"], loc_line)[0]:
             remote = False   # поле локации перевешивает «remote» из текста
             onsite = True
+            foreign_office = True
+
+    # Формат из ПОЛЯ hh главнее слов текста — так же, как workplace_type у ATS
+    # (normalize.detect_remote). Строку кладёт hh_enrich, поэтому она есть у всех
+    # дообогащённых вакансий, то есть у всех hh-вакансий, дошедших до отбора.
+    # Решение владельца 25.09.2026: удалёнка в приоритете, офис в ДРУГОМ городе РФ
+    # нежелателен, но исключительный оффер он хочет видеть — поэтому штраф, не отсев.
+    ru_office = None
+    hh_fmt = _HH_WORK_FORMAT.search(blob)
+    if hh_fmt:
+        formats = set(re.findall(r"[a-z_]+", hh_fmt.group(1)))
+        if "remote" in formats:
+            remote, onsite = True, False
+        else:
+            remote = False
+            if not foreign_office and not _hits(CRITERIA["relocation_ok"], loc_line)[0]:
+                onsite = False   # штраф ниже свой, не «офис за рубежом» −30
+                ru_office = "home" if _HOME_CITY.search(loc_line) else "city"
 
     if remote:
         score += _W["remote"]; reasons.append("remote")
     if reloc:
         score += _W["relocation"]; reasons.append("страна релокации подходит")
+
+    if ru_office == "city":
+        score += _W.get("onsite_ru_city", -20)
+        reasons.append("офис/гибрид в другом городе РФ, удалёнки нет")
+    elif ru_office == "home":
+        sub = _W.get("onsite_home", 0)
+        score += sub
+        reasons.append(f"{sub} офис/гибрид в Самаре" if sub else "офис/гибрид в Самаре")
 
     if onsite and not remote and not reloc:
         # Офис в стране вне списка релокации — но если вакансия требует РУССКИЙ

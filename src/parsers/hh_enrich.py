@@ -58,6 +58,14 @@ _TIMEOUT = 20
 _PAUSE = 0.8
 _MIN_USEFUL = 300      # ниже этого считаем, что описание не извлеклось
 
+# Формат работы — структурное поле страницы (REMOTE / HYBRID / ON_SITE / FIELD_WORK),
+# в тексте описания его нет. RSS отдаёт только город, а слово «удалённо» в тексте
+# встречается и у офисных вакансий («удалённая консультация клиентов»), поэтому до
+# 25.09.2026 отделения ВТБ получали +10 за remote, а офис РТ-ИБ у м. «Южная» — ни
+# одного штрафа. Поле проверено на 5 страницах против их «Формат работы: …».
+_WORK_FORMATS = re.compile(rb'"workFormats":\s*\[((?:\s*"[A-Z_]+"\s*,?)*)\]')
+WORK_FORMAT_LABEL = "Формат работы (hh):"
+
 # Порог «тихого отказа»: если доля успешных извлечений упала ниже — вёрстка HH
 # сменилась. Без этой проверки поломка выглядит как обычный день: ошибок в логе
 # нет, описания просто снова короткие, и бот молча возвращается к слепому
@@ -101,6 +109,25 @@ def _extract(html: bytes) -> str:
     return ""
 
 
+def _format_note(html: bytes) -> str:
+    """Строка «Формат работы (hh): REMOTE, HYBRID» или пусто, если поля нет.
+
+    Ставится В НАЧАЛО описания: хвост режется по MAX_DESCRIPTION_CHARS.
+
+    ⚠️ В сырой странице JSON лежит в атрибуте, кавычки экранированы как `&#34;`.
+    Без раскодирования поле не находилось ни на одной из 1126 страниц (замер
+    25.09.2026). Ищем только ПЛОСКИЙ список строк: вложенный `[{"workFormatsElement"`
+    и справочник `[{"id":"ON_SITE","text":…}]` со всеми вариантами им не являются."""
+    html = html.replace(b"&#34;", b'"').replace(b"&quot;", b'"')
+    m = _WORK_FORMATS.search(html)
+    if not m:
+        return ""
+    formats = re.findall(rb"[A-Z_]+", m.group(1))
+    if not formats:
+        return ""
+    return f"{WORK_FORMAT_LABEL} {', '.join(f.decode() for f in formats)}\n"
+
+
 def _fetch(url: str, session: requests.Session | None = None) -> tuple[str, int]:
     """(описание, сколько байт скачано). Пустая строка — не получилось.
 
@@ -118,7 +145,8 @@ def _fetch(url: str, session: requests.Session | None = None) -> tuple[str, int]
         if r.status_code != 200:
             logger.debug("HH enrich: %s -> HTTP %s", m.group(1), r.status_code)
             return "", size
-        return _extract(r.content), size
+        text = _extract(r.content)
+        return (_format_note(r.content) + text if text else ""), size
     except Exception as e:
         logger.debug("HH enrich: %s -> %s", m.group(1), str(e)[:100])
         return "", 0
