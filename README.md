@@ -6,7 +6,7 @@
 ![Telegram](https://img.shields.io/badge/Telegram-bot-26A5E4?logo=telegram&logoColor=white)
 ![last commit](https://img.shields.io/github/last-commit/Aleksandr-Sit/job-hunter)
 ![CI](https://github.com/Aleksandr-Sit/job-hunter/actions/workflows/ci.yml/badge.svg)
-![tests](https://img.shields.io/badge/tests-503%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-532%20passing-brightgreen)
 
 Automated job search system for Web3/DeFi operations roles. Parses ~4900 vacancies from 11 sources three times a day, filters them down with a two-stage pipeline, and sends the survivors to Telegram. Running in production since June 2026.
 
@@ -314,4 +314,4 @@ job-hunter/
 - **python-telegram-bot** — Telegram notifications
 - **BeautifulSoup4 + requests** — web scraping
 - **SQLite** — dedup and match result cache
-- **pytest + ruff + GitHub Actions** — 503 tests, linting, CI on every push
+- **pytest + ruff + GitHub Actions** — 500+ tests, linting, CI on every push
