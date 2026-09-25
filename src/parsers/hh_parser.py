@@ -4,6 +4,7 @@ RSS endpoint: hh.ru/search/vacancy/rss?text=...&area=113
 """
 import logging
 import re
+import time
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from email.utils import parsedate_to_datetime
@@ -27,6 +28,8 @@ _RSS_URL = "https://hh.ru/search/vacancy/rss"
 # `&page=1,2,3` возвращают ту же выдачу с тем же первым ID. Единственный способ
 # получить с одного запроса больше 20 — сменить сортировку (см. parse()).
 _RSS_PAGE_CAP = 20
+_RSS_ATTEMPTS = 2
+_RSS_RETRY_PAUSE = 3.0
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
     "Accept": "application/rss+xml, application/xml, text/xml, */*",
@@ -105,6 +108,27 @@ class HHParser(BaseParser):
                         added_by_employers)
         return jobs
 
+    def harvest(self) -> list[Job]:
+        """Лёгкий промежуточный сбор: текстовые запросы, только проход по дате.
+
+        Зачем. Окно RSS — 20 свежих вакансий на запрос, а прогоны идут 3 раза в день
+        с ночным разрывом 16 ч. Замер 25.09.2026: у 22 запросов 20-я вакансия моложе
+        16 ч («служба поддержки» — 6 минут, «AI automation» — 1.3 ч), то есть всё, что
+        вышло между прогонами сверх окна, бот не видел никогда. Частый сбор в пул
+        (scheduler.harvest_hh) снимает эту потерю без лишних вызовов AI.
+
+        Без слежки за работодателями и без второго прохода: работодатели выдают
+        единицы вакансий и в окно не упираются, а релевантностный срез от частоты
+        опроса не зависит — его достаточно в основном прогоне.
+        """
+        if not self.cfg.get("enabled", True):
+            return []
+        seen: dict[str, Job] = {}
+        for query in self.cfg.get("search_queries", []):
+            for job in self._fetch_query(query, by_date=True):
+                seen.setdefault(job.id, job)
+        return list(seen.values())
+
     def _fetch_employer(self, emp: dict, second_pass: bool = True) -> list[Job]:
         """Вакансии одного работодателя с защитой от неверного id.
 
@@ -141,16 +165,24 @@ class HHParser(BaseParser):
             params["employer_id"] = employer_id
         if by_date:
             params["order_by"] = "publication_time"
-        try:
-            # trust_env=False: hh.ru доступен напрямую из России,
-            # через международный прокси — блокируется (451)
-            session = requests.Session()
-            session.trust_env = False
-            resp = session.get(_RSS_URL, params=params, headers=_HEADERS, timeout=15)
-            resp.raise_for_status()
-        except requests.RequestException as e:
-            logger.error("HH.ru RSS request failed: %s", e)
-            return []
+        # trust_env=False: hh.ru доступен напрямую из России,
+        # через международный прокси — блокируется (451)
+        session = requests.Session()
+        session.trust_env = False
+        # Один повтор: единичный таймаут hh.ru (лог 25.09.2026, прогон 10:00) молча
+        # выбрасывал все 20 вакансий запроса, а у насыщенных запросов они к следующему
+        # прогону уже выпадают из окна RSS — то есть терялись насовсем.
+        for attempt in range(_RSS_ATTEMPTS):
+            try:
+                resp = session.get(_RSS_URL, params=params, headers=_HEADERS, timeout=15)
+                resp.raise_for_status()
+                break
+            except requests.RequestException as e:
+                if attempt + 1 < _RSS_ATTEMPTS:
+                    time.sleep(_RSS_RETRY_PAUSE)
+                    continue
+                logger.error("HH.ru RSS request failed: %s", e)
+                return []
 
         try:
             root = ET.fromstring(resp.content)

@@ -235,7 +235,68 @@ def _warn_if_provider_switched() -> None:
     )
 
 
+# Основной прогон и почасовой сбор HH не должны пересекаться: сбор во время прогона
+# лишь дублирует его же запросы к hh.ru. Прогон ждёт замка, сбор — пропускается.
+_RUN_LOCK = threading.Lock()
+
+
+def _merge_hh_pool(all_jobs: list, max_age_days: int) -> list:
+    """Добавляет к свежей выдаче вакансии из пула HH, которых в ней нет.
+
+    Свежая версия вакансии важнее пульной: у неё актуальные поля выдачи."""
+    pool_jobs, expired = storage.pool_load(max_age_days=max_age_days)
+    fresh_ids = {j.id for j in all_jobs}
+    from_pool = [j for j in pool_jobs if j.id not in fresh_ids]
+    if pool_jobs or expired:
+        logger.info("HH пул: в пуле %d, добавлено к выдаче %d, выброшено по сроку %d",
+                    len(pool_jobs), len(from_pool), expired)
+    if expired:
+        logger.warning("HH пул: %d вакансий пролежали дольше %d дн. без вердикта и "
+                       "выброшены — приток выше потолка пересмотра (hh_enrich.retry_limit)",
+                       expired, max_age_days)
+    return all_jobs + from_pool
+
+
+def _prune_hh_pool() -> None:
+    """Убирает из пула всё, что получило вердикт. Остаются отложенные пересмотром
+    и те, чей AI-батч упал: они ждут следующего прогона."""
+    try:
+        removed = storage.pool_prune_seen(prefilter_version=_prefilter_version())
+        logger.info("HH пул: разобрано %d, ждут следующего прогона %d",
+                    removed, storage.pool_size())
+    except Exception:
+        logger.exception("HH пул: не удалось убрать разобранные вакансии")
+
+
+def harvest_hh() -> None:
+    """Почасовой сбор HH между прогонами: новые вакансии → пул, без AI."""
+    if not _RUN_LOCK.acquire(blocking=False):
+        logger.info("HH сбор пропущен: идёт основной прогон")
+        return
+    try:
+        from .parsers.hh_parser import HHParser
+        storage.init_db()
+        jobs = HHParser().harvest()
+        seen = storage.is_seen_batch([j.id for j in jobs],
+                                     prefilter_version=_prefilter_version())
+        added = storage.pool_add([j for j in jobs if j.id not in seen])
+        logger.info("HH сбор между прогонами: получено %d, новых в пул %d, в пуле %d",
+                    len(jobs), added, storage.pool_size())
+    except Exception:
+        logger.exception("HH сбор между прогонами упал")
+    finally:
+        _RUN_LOCK.release()
+
+
 def run_once() -> None:
+    with _RUN_LOCK:
+        try:
+            _run_pipeline()
+        finally:
+            _prune_hh_pool()
+
+
+def _run_pipeline() -> None:
     cfg = _load_config()
     matching_cfg = cfg.get("matching", {})
     threshold = matching_cfg.get("threshold", 65)
@@ -270,6 +331,8 @@ def run_once() -> None:
 
     total_parsed = len(all_jobs)
     logger.info("Total fetched: %d", total_parsed)
+    all_jobs = _merge_hh_pool(
+        all_jobs, cfg.get("scheduler", {}).get("hh_pool_max_age_days", 14))
 
     # 2. Дедупликация + pre-filter (батчевые запросы к БД)
     # Версия pre-filter: отказы под старым отпечатком трактуются как unseen и
@@ -277,6 +340,10 @@ def run_once() -> None:
     pf_version = _prefilter_version()
     seen_ids = storage.is_seen_batch([j.id for j in all_jobs], prefilter_version=pf_version)
     unseen = [j for j in all_jobs if j.id not in seen_ids]
+    # Все непросмотренные HH — в пул до вердикта. Разобранные уберёт _prune_hh_pool,
+    # а отложенные пересмотром останутся: раньше они возвращались, только если hh.ru
+    # снова отдаст их в окне RSS, а у насыщенных запросов этого не происходило.
+    storage.pool_add([j for j in unseen if (j.source or "") == "hh.ru"])
     new_jobs = []
     near_miss = []
     hh_retry = []
@@ -417,6 +484,13 @@ def main() -> None:
         scheduler.add_job(run_once, "interval", minutes=interval)
         logger.info("Job Hunter running. Interval: %d min", interval)
         send_text(f"🤖 <b>Job Hunter запущен</b>\nИнтервал: каждые {interval} мин.")
+
+    harvest_expr = sched_cfg.get("hh_harvest_cron")
+    if harvest_expr:
+        h = harvest_expr.split()
+        scheduler.add_job(harvest_hh, "cron", minute=h[0], hour=h[1],
+                          day=h[2], month=h[3], day_of_week=h[4])
+        logger.info("HH сбор между прогонами (UTC): %s", harvest_expr)
 
     # Первый запуск сразу. Под защитой: без неё падение стартового прогона роняло
     # контейнер целиком, а `restart: unless-stopped` поднимал его заново — карусель

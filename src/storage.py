@@ -1,10 +1,11 @@
 import json
 import sqlite3
+from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
-from .models import MatchResult
+from .models import Job, MatchResult
 
 DB_PATH = Path(__file__).parent.parent / "data" / "jobs.db"
 
@@ -49,6 +50,16 @@ def init_db() -> None:
                 score INTEGER,
                 applied_at TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT 'applied'
+            );
+
+            -- Пул непросмотренных вакансий HH (25.09.2026). Окно RSS — 20 свежих
+            -- на запрос, поэтому всё, что бот не разобрал сразу (вышло между
+            -- прогонами или отложено потолком пересмотра), к следующему прогону
+            -- выпадало из выдачи и терялось. Здесь такие вакансии ждут вердикта.
+            CREATE TABLE IF NOT EXISTS hh_pool (
+                id TEXT PRIMARY KEY,
+                job_json TEXT NOT NULL,
+                added_at TEXT NOT NULL
             );
         """)
         # Миграция: версия скоринга (промпт+профиль+критерии). Кэш с другой
@@ -157,6 +168,66 @@ def save_match(result: MatchResult, version: Optional[str] = None) -> None:
                 version,
             ),
         )
+
+
+# ── Пул непросмотренных вакансий HH ───────────────────────────────────────────
+
+def _job_to_json(job: Job) -> str:
+    d = asdict(job)
+    d["published_at"] = job.published_at.isoformat() if job.published_at else None
+    return json.dumps(d, ensure_ascii=False)
+
+
+def _job_from_json(raw: str) -> Job:
+    d = json.loads(raw)
+    if d.get("published_at"):
+        d["published_at"] = datetime.fromisoformat(d["published_at"])
+    return Job(**d)
+
+
+def pool_add(jobs: list) -> int:
+    """Кладёт вакансии в пул; уже лежащие не перезаписывает. Возвращает число новых."""
+    if not jobs:
+        return 0
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        before = conn.total_changes
+        conn.executemany(
+            "INSERT OR IGNORE INTO hh_pool (id, job_json, added_at) VALUES (?,?,?)",
+            [(j.id, _job_to_json(j), now) for j in jobs],
+        )
+        return conn.total_changes - before
+
+
+def pool_load(max_age_days: int = 14) -> tuple[list, int]:
+    """Вакансии пула + число выброшенных по сроку.
+
+    Срок нужен, чтобы пул не рос бесконечно, если приток превышает потолок
+    пересмотра. Выброшенное считается и попадает в лог: потеря видна цифрой,
+    а не происходит молча, как было до пула."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=max_age_days)).isoformat()
+    with get_conn() as conn:
+        expired = conn.execute("DELETE FROM hh_pool WHERE added_at < ?", (cutoff,)).rowcount
+        rows = conn.execute("SELECT job_json FROM hh_pool").fetchall()
+    return [_job_from_json(r["job_json"]) for r in rows], expired
+
+
+def pool_prune_seen(prefilter_version: Optional[str] = None) -> int:
+    """Убирает из пула всё, что уже получило вердикт или отказ под текущим
+    отпечатком (та же логика, что в is_seen_batch). Возвращает число удалённых."""
+    with get_conn() as conn:
+        ids = [r["id"] for r in conn.execute("SELECT id FROM hh_pool").fetchall()]
+    seen = is_seen_batch(ids, prefilter_version=prefilter_version)
+    if not seen:
+        return 0
+    with get_conn() as conn:
+        conn.executemany("DELETE FROM hh_pool WHERE id = ?", [(i,) for i in seen])
+    return len(seen)
+
+
+def pool_size() -> int:
+    with get_conn() as conn:
+        return conn.execute("SELECT COUNT(*) c FROM hh_pool").fetchone()["c"]
 
 
 # ── Трекер откликов ───────────────────────────────────────────────────────────
