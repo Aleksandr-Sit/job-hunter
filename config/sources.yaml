@@ -12,9 +12,7 @@ telegram_channels:
   - opento_crypto        # 20 постов
   - cryptojobslist       # 14 постов
   - cryptojobsh          # 20 постов
-  - web3vacancy          # 20 постов — web3 вакансии EN
   - web3hiring           # 61k подписчиков, daily global web3 вакансии, EN
-  - jobers               # 20 постов — «РАБОТА в КриптоИндустрии» RU (проба 22.07)
   - careers_crypto       # «CC | Крипто Вакансии» RU, 25,7k; проба t.me/s с VPS 15.09.2026:
                          # 20 постов, последние 11–14.09 (RU_CRYPTO_MARKET_MAP §6)
   # Не работают (приватные или нет публичного preview):
@@ -23,6 +21,8 @@ telegram_channels:
   # Проверены 22.07, отклонены: holder_job_marketing (маркетинг/BD не профиль),
   #   defijobs (новостной, не вакансии), cryptojobsboard/cryptowork (шум/неактивен),
   #   cryptojobs_ru/web3jobsru/getitcrypto/cryptorekruter (0 постов, приватные)
+  # Сняты 25.09.2026 как мёртвые: web3vacancy (последний пост 804 дня назад),
+  #   jobers (476 дней). Проверка: скорость постов по t.me/s, скилл pipeline-silence.
 
 company_career_pages:
   # Сайты конкретных компаний (если нужно мониторить careers-страницы)
