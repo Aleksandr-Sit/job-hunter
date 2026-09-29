@@ -55,16 +55,16 @@ async def _send_message_async(bot, chat_id: str, text: str,
         return False
 
 
-async def _send_jobs_batch_async(pairs: list[tuple[Job, MatchResult]]) -> int:
+async def _send_jobs_batch_async(pairs: list[tuple[Job, MatchResult]]) -> list[Job]:
     bot = _get_bot()
     chat_id = _get_chat_id()
-    sent = 0
+    sent = []
     for job, match in pairs:
         text = format_job_message(job, match)
         keyboard = _make_keyboard(job)
         ok = await _send_message_async(bot, chat_id, text, keyboard)
         if ok:
-            sent += 1
+            sent.append(job)
         await asyncio.sleep(0.5)  # не флудим Telegram API
     return sent
 
@@ -75,8 +75,10 @@ async def _send_text_async(text: str) -> bool:
     return await _send_message_async(bot, chat_id, text)
 
 
-def send_jobs_batch(pairs: list[tuple[Job, MatchResult]]) -> int:
-    """Отправляет все вакансии в одном event loop. Возвращает количество отправленных."""
+def send_jobs_batch(pairs: list[tuple[Job, MatchResult]]) -> list[Job]:
+    """Отправляет все вакансии в одном event loop. Возвращает те, что Telegram
+    принял: по ним планировщик запоминает ключи дедупа, а не доставленная
+    карточка ключ не занимает — её копия позже сможет дойти."""
     return asyncio.run(_send_jobs_batch_async(pairs))
 
 
@@ -134,4 +136,4 @@ if __name__ == "__main__":
             recommendation="Strong match — apply immediately, the stack is ideal.",
         )
         sent = send_jobs_batch([(test_job, test_match)])
-        print(f"Sent: {sent}")
+        print(f"Sent: {len(sent)}")
