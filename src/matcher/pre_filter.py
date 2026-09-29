@@ -1119,36 +1119,51 @@ def _tg_body(text: str) -> str:
     return _TG_DECOR_HEAD.sub("", _n(text)).lstrip()
 
 
+def job_dedupe_key(job) -> str:
+    """Ключ near-дубликата для вакансии целиком. Один и тот же для дедупа внутри
+    прогона (`split_duplicates`) и для постоянной таблицы `dedupe_keys`: если
+    формулы разойдутся, межпрогонный дедуп молча перестанет узнавать копии."""
+    company = getattr(job, "company", "") or ""
+    # У вакансий из Telegram в поле `company` лежит НЕ работодатель, а канал,
+    # который перепостил объявление (`telegram_parser` кладёт туда `@<канал>`).
+    # Одна и та же вакансия в двух каналах давала два разных ключа и доходила
+    # дважды — боевой случай 26.08.2026: «Требуется специалист по межбиржевой
+    # торговле» пришла из @cryptovakansii и @opento_crypto с одинаковым текстом
+    # и одинаковым баллом 90. Для дедупа канал — шум, дедуплицируем по заголовку.
+    # ...но тогда по одному заголовку склеиваются РАЗНЫЕ вакансии: у постов
+    # заголовок часто общий («Требуется менеджер»), а текст разный. Поэтому
+    # для Telegram к ключу добавляем отпечаток начала описания — репост того
+    # же текста в другом канале даёт тот же отпечаток и по-прежнему схлопнется,
+    # а два разных объявления — нет.
+    extra = ""
+    if str(getattr(job, "source", "")).startswith("telegram"):
+        company = ""
+        head = _tg_body(getattr(job, "description", "") or "")[:300]
+        extra = "|" + hashlib.md5(head.encode("utf-8")).hexdigest()[:8]
+    return dedupe_key(company, getattr(job, "title", "")) + extra
+
+
+def split_duplicates(items: list) -> tuple[list, list]:
+    """Делит на представителей и копии, сохраняя порядок (побеждает первый).
+    Вход: Job или (Job, MatchResult). Копии — парами (копия, её представитель):
+    планировщику нужен id представителя, чтобы пометить копию финально."""
+    first: dict[str, object] = {}
+    kept, dropped = [], []
+    for item in items:
+        job = item[0] if isinstance(item, tuple) else item
+        key = job_dedupe_key(job)
+        if key in first:
+            dropped.append((item, first[key]))
+            continue
+        first[key] = item
+        kept.append(item)
+    return kept, dropped
+
+
 def dedupe_jobs(pairs: list) -> list:
     """Оставляет по одному представителю на near-дубликат, сохраняя порядок.
     Вход: [(Job, MatchResult)] — как в scheduler перед отправкой."""
-    seen: set[str] = set()
-    out = []
-    for item in pairs:
-        job = item[0] if isinstance(item, tuple) else item
-        company = getattr(job, "company", "") or ""
-        # У вакансий из Telegram в поле `company` лежит НЕ работодатель, а канал,
-        # который перепостил объявление (`telegram_parser` кладёт туда `@<канал>`).
-        # Одна и та же вакансия в двух каналах давала два разных ключа и доходила
-        # дважды — боевой случай 26.08.2026: «Требуется специалист по межбиржевой
-        # торговле» пришла из @cryptovakansii и @opento_crypto с одинаковым текстом
-        # и одинаковым баллом 90. Для дедупа канал — шум, дедуплицируем по заголовку.
-        # ...но тогда по одному заголовку склеиваются РАЗНЫЕ вакансии: у постов
-        # заголовок часто общий («Требуется менеджер»), а текст разный. Поэтому
-        # для Telegram к ключу добавляем отпечаток начала описания — репост того
-        # же текста в другом канале даёт тот же отпечаток и по-прежнему схлопнется,
-        # а два разных объявления — нет.
-        extra = ""
-        if str(getattr(job, "source", "")).startswith("telegram"):
-            company = ""
-            head = _tg_body(getattr(job, "description", "") or "")[:300]
-            extra = "|" + hashlib.md5(head.encode("utf-8")).hexdigest()[:8]
-        key = dedupe_key(company, getattr(job, "title", "")) + extra
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(item)
-    return out
+    return split_duplicates(pairs)[0]
 
 
 def score_job(job: Job) -> dict:

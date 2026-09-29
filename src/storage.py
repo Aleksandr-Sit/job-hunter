@@ -61,6 +61,17 @@ def init_db() -> None:
                 job_json TEXT NOT NULL,
                 added_at TEXT NOT NULL
             );
+
+            -- Ключи near-дубликатов ОТПРАВЛЕННЫХ карточек (29.09.2026). Дедуп по
+            -- ключу работал только внутри прогона: копия из другого города hh или
+            -- репост в другом TG-канале в следующем прогоне приходила второй
+            -- карточкой (аудит 28.09: «Тетрика» ×14, «межбиржевая торговля» ×7).
+            -- Ключ — pre_filter.job_dedupe_key, окно — scheduler.dedupe_window_days.
+            CREATE TABLE IF NOT EXISTS dedupe_keys (
+                key TEXT PRIMARY KEY,
+                job_id TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
         """)
         # Миграция: версия скоринга (промпт+профиль+критерии). Кэш с другой
         # версией считается устаревшим и пересчитывается — иначе смена критериев
@@ -77,6 +88,10 @@ def init_db() -> None:
         seen_cols = {r["name"] for r in conn.execute("PRAGMA table_info(seen_jobs)")}
         if "prefilter_version" not in seen_cols:
             conn.execute("ALTER TABLE seen_jobs ADD COLUMN prefilter_version TEXT")
+        # Миграция: id вакансии, копией которой признана эта (NULL — не копия).
+        # Чтобы при разборе «почему не пришла» было видно, чей это дубль.
+        if "dup_of" not in seen_cols:
+            conn.execute("ALTER TABLE seen_jobs ADD COLUMN dup_of TEXT")
 
 
 def is_seen_batch(job_ids: list, prefilter_version: Optional[str] = None) -> set:
@@ -132,6 +147,61 @@ def mark_prefilter_seen(jobs: list, version: str) -> None:
             "seen_at=excluded.seen_at WHERE seen_jobs.prefilter_version IS NOT NULL",
             [(j.id, j.source, j.title, j.url, now, version) for j in jobs],
         )
+
+
+def mark_duplicate_seen(pairs: list) -> None:
+    """Копия near-дубликата: финальный вердикт (prefilter_version NULL) с
+    пометкой, чья это копия. Вход — [(Job, id представителя)].
+
+    Финальный, а не провизорный: раньше копия, отброшенная дедупом, получала
+    отказ под отпечатком предфильтра и воскресала при смене критериев — боевой
+    случай 22→25.09.2026, «Аккаунт-менеджер» второй карточкой."""
+    if not pairs:
+        return
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        conn.executemany(
+            "INSERT INTO seen_jobs (id, source, title, url, seen_at, prefilter_version, dup_of) "
+            "VALUES (?,?,?,?,?,NULL,?) "
+            "ON CONFLICT(id) DO UPDATE SET prefilter_version=NULL, "
+            "dup_of=excluded.dup_of, seen_at=excluded.seen_at",
+            [(j.id, j.source, j.title, j.url, now, orig) for j, orig in pairs],
+        )
+
+
+def remember_dedupe_keys(pairs: list) -> None:
+    """Запоминает ключи отправленных карточек: [(key, job_id)]. Повторная
+    отправка того же ключа (после окна) обновляет дату и id."""
+    if not pairs:
+        return
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        conn.executemany(
+            "INSERT INTO dedupe_keys (key, job_id, created_at) VALUES (?,?,?) "
+            "ON CONFLICT(key) DO UPDATE SET job_id=excluded.job_id, "
+            "created_at=excluded.created_at",
+            [(k, jid, now) for k, jid in pairs],
+        )
+
+
+def known_dedupe_keys(keys: list, max_age_days: int = 30) -> dict:
+    """{key: job_id} для ключей, отправленных не раньше max_age_days назад."""
+    keys = list(set(keys))
+    if not keys:
+        return {}
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=max_age_days)).isoformat()
+    out = {}
+    with get_conn() as conn:
+        # Пачками: у SQLite лимит числа параметров в запросе.
+        for i in range(0, len(keys), 500):
+            chunk = keys[i:i + 500]
+            placeholders = ",".join("?" * len(chunk))
+            rows = conn.execute(
+                f"SELECT key, job_id FROM dedupe_keys WHERE key IN ({placeholders}) "
+                "AND created_at >= ?", [*chunk, cutoff],
+            ).fetchall()
+            out.update({r["key"]: r["job_id"] for r in rows})
+    return out
 
 
 def get_cached_match(job_id: str, version: Optional[str] = None) -> Optional[MatchResult]:

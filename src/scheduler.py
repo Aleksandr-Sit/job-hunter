@@ -19,7 +19,14 @@ from .bot.callback_handler import run_listener
 from .bot.notifier import send_daily_summary, send_jobs_batch, send_text
 from .log_redact import RedactingFilter
 from .matcher.cerebras_matcher import match_jobs
-from .matcher.pre_filter import _prefilter_version, dedupe_jobs, is_soft_reject, score_job
+from .matcher.pre_filter import (
+    _prefilter_version,
+    dedupe_jobs,
+    is_soft_reject,
+    job_dedupe_key,
+    score_job,
+    split_duplicates,
+)
 from .models import Job
 
 load_dotenv(Path(__file__).parent.parent / ".env")
@@ -257,6 +264,50 @@ def _merge_hh_pool(all_jobs: list, max_age_days: int) -> list:
     return all_jobs + from_pool
 
 
+def _drop_sent_copies(jobs: list, window_days: int) -> list:
+    """Убирает копии вакансий, карточки которых уже ОТПРАВЛЕНЫ за окно.
+
+    Дедуп по ключу (`split_duplicates`) видит только текущий прогон, поэтому
+    копия, пришедшая в следующем, доходила второй карточкой: hh — та же компания
+    и должность в другом городе («Тетрика» ×14 за месяц), Telegram — репост в
+    другом канале («межбиржевая торговля» ×7). Аудит 28.09.2026.
+
+    Отсев идёт до пула, предфильтра и пересмотра HH: ключ hh от описания не
+    зависит, поэтому качать копию незачем. Копия помечается финально (`dup_of`) —
+    смена критериев её не воскресит. Ключ пишется только для отправленных
+    (решение 29.09.2026): копия вакансии, которую AI отклонил, идёт своим ходом —
+    у hh она бывает в другом городе и с другим баллом («Свой в Альфе» 30 → 72).
+    """
+    if not jobs:
+        return jobs
+    keys = {j.id: job_dedupe_key(j) for j in jobs}
+    known = storage.known_dedupe_keys(list(keys.values()), max_age_days=window_days)
+    if not known:
+        return jobs
+    kept, dupes = [], []
+    for j in jobs:
+        orig = known.get(keys[j.id])
+        if orig:
+            dupes.append((j, orig))
+        else:
+            kept.append(j)
+    storage.mark_duplicate_seen(dupes)
+    hh = sum(1 for j, _ in dupes if (j.source or "") == "hh.ru")
+    tg = sum(1 for j, _ in dupes if (j.source or "").startswith("telegram"))
+    logger.info("Межпрогонные дубли отброшены: %d (hh %d, telegram %d, прочие %d)",
+                len(dupes), hh, tg, len(dupes) - hh - tg)
+    for j, orig in dupes[:3]:
+        logger.info("  копия %s %s → уже отправлена %s", j.id, j.title[:60], orig)
+    return kept
+
+
+def _mark_run_duplicates(dropped: list) -> set:
+    """Копии, схлопнутые дедупом внутри прогона, — финальным вердиктом с id
+    представителя. Возвращает их id, чтобы не пометить их ещё и провизорно."""
+    storage.mark_duplicate_seen([(copy, rep.id) for copy, rep in dropped])
+    return {copy.id for copy, _ in dropped}
+
+
 def _prune_hh_pool() -> None:
     """Убирает из пула всё, что получило вердикт. Остаются отложенные пересмотром
     и те, чей AI-батч упал: они ждут следующего прогона."""
@@ -340,6 +391,8 @@ def _run_pipeline() -> None:
     pf_version = _prefilter_version()
     seen_ids = storage.is_seen_batch([j.id for j in all_jobs], prefilter_version=pf_version)
     unseen = [j for j in all_jobs if j.id not in seen_ids]
+    window_days = cfg.get("scheduler", {}).get("dedupe_window_days", 30)
+    unseen = _drop_sent_copies(unseen, window_days)
     # Все непросмотренные HH — в пул до вердикта. Разобранные уберёт _prune_hh_pool,
     # а отложенные пересмотром останутся: раньше они возвращались, только если hh.ru
     # снова отдаст их в окне RSS, а у насыщенных запросов этого не происходило.
@@ -367,10 +420,11 @@ def _run_pipeline() -> None:
     # съесть свою долю бюджета Cerebras. Замер свежей пачки 15.08.2026: Social
     # Discovery Group ×3, Coinbase «Senior IT Automation Engineer» ×2, Kraken «Growth
     # Workflow Manager» ×4 (две пары различались только двойным пробелом в заголовке).
-    # Место выбрано до `ai_ids`: тогда отброшенные копии попадут в mark_prefilter_seen
-    # ниже и не вернутся на следующем прогоне.
+    # Отброшенные копии помечаются финально (`_mark_run_duplicates`): провизорный
+    # отказ воскрешал их при смене критериев, и копия приходила второй карточкой.
     before_ai = len(new_jobs)
-    new_jobs = dedupe_jobs(new_jobs)
+    new_jobs, dropped = split_duplicates(new_jobs)
+    dup_ids = _mark_run_duplicates(dropped)
     if before_ai != len(new_jobs):
         logger.info("Near-дубликаты схлопнуты до AI: %d → %d", before_ai, len(new_jobs))
 
@@ -387,15 +441,16 @@ def _run_pipeline() -> None:
         rescued, deferred = _rescue_hh_rejects(hh_retry, limit=_hh_cfg.get("retry_limit", 220))
         deferred_ids = {j.id for j in deferred}
         if rescued:
-            new_jobs = dedupe_jobs(new_jobs + rescued)
+            new_jobs, dropped = split_duplicates(new_jobs + rescued)
+            dup_ids |= _mark_run_duplicates(dropped)
 
     # Провизорный seen — только детерминированно отсеянное, с отпечатком версии:
     # смена критериев переоткроет эти отказы. Кандидатов в AI помечает match_jobs
     # финальным вердиктом после успешного скоринга батча (сбой AI не теряет вакансии).
     # Отложенные пересмотром не помечаются: остаются в очереди следующего прогона.
-    ai_ids = {j.id for j in new_jobs}
-    storage.mark_prefilter_seen(
-        [j for j in unseen if j.id not in ai_ids and j.id not in deferred_ids], pf_version)
+    # Копии near-дубликатов уже помечены финально — провизорный отказ им не нужен.
+    skip_ids = {j.id for j in new_jobs} | deferred_ids | dup_ids
+    storage.mark_prefilter_seen([j for j in unseen if j.id not in skip_ids], pf_version)
 
     logger.info("After dedup: %d unseen (из них отложено до пересмотра HH: %d) | "
                 "After pre-filter: %d to AI", len(unseen), len(deferred_ids), len(new_jobs))
@@ -425,11 +480,14 @@ def _run_pipeline() -> None:
         logger.info("Near-дубликаты схлопнуты: %d → %d", before, len(matched))
 
     sent = send_jobs_batch(matched)
-    logger.info("Sent %d notifications", sent)
+    logger.info("Sent %d notifications", len(sent))
+    # Ключи — только доставленных карточек: по ним следующие прогоны узнают копии
+    # (см. _drop_sent_copies). Не доставленная ключ не занимает.
+    storage.remember_dedupe_keys([(job_dedupe_key(j), j.id) for j in sent])
 
     # Дневной итог (если отправлено что-то)
-    if sent > 0:
-        send_daily_summary(total_parsed, sent, active_sources)
+    if sent:
+        send_daily_summary(total_parsed, len(sent), active_sources)
 
 
 def _wait_for_network(timeout: int = 180) -> None:
