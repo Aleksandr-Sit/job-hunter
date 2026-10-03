@@ -28,6 +28,7 @@ from .matcher.pre_filter import (
     split_duplicates,
 )
 from .models import Job
+from .parsers.normalize import clean_job_fields
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
@@ -384,6 +385,10 @@ def _run_pipeline() -> None:
     logger.info("Total fetched: %d", total_parsed)
     all_jobs = _merge_hh_pool(
         all_jobs, cfg.get("scheduler", {}).get("hh_pool_max_age_days", 14))
+    # Сущности (&nbsp;, &amp;) и лишние пробелы — одним правилом для всех
+    # источников, включая вакансии из пула hh, записанные до этой правки.
+    for j in all_jobs:
+        clean_job_fields(j)
 
     # 2. Дедупликация + pre-filter (батчевые запросы к БД)
     # Версия pre-filter: отказы под старым отпечатком трактуются как unseen и

@@ -30,9 +30,14 @@ def build_parsers():
 
 def fetch_jobs() -> list[dict]:
     """Параллельный fetch всех источников. Ошибки парсера не роняют дамп."""
+    from src.parsers.normalize import clean_job_fields
+
     def run(p):
         try:
-            return p.parse()
+            jobs = p.parse()
+            for j in jobs:   # как в scheduler.run_once — замер видит те же заголовки
+                clean_job_fields(j)
+            return jobs
         except Exception:
             return []
 
