@@ -7,7 +7,8 @@
 - CryptoJobsList больше не отдаёт `jobPostingJSONLD`, описание осталось
   заглушкой «должность at компания», а ссылка на вакансию вела в 404.
 """
-from src.parsers.normalize import html_to_text
+from src.models import Job
+from src.parsers.normalize import clean_inline, clean_job_fields, html_to_text
 from src.parsers.web.cryptojoblist import CryptoJobListParser
 from src.parsers.web.greenhouse import GreenhouseParser
 from src.parsers.web.lever import LeverParser
@@ -29,6 +30,34 @@ class TestHtmlToText:
 
     def test_empty(self):
         assert html_to_text(None) == "" and html_to_text("   ") == ""
+
+
+class TestCleanInline:
+    """Заголовок/компания/город: сущности не должны доезжать до карточки."""
+
+    def test_hh_title_with_nbsp(self):
+        # Живой случай 01.10.2026: Контур.Банк, hh.ru
+        raw = "Главный специалист по&nbsp;финансовому мониторингу в&nbsp;Контур.Банк"
+        assert clean_inline(raw) == "Главный специалист по финансовому мониторингу в Контур.Банк"
+
+    def test_double_escaped(self):
+        assert clean_inline("Sales &amp;amp; Support") == "Sales & Support"
+        assert clean_inline("по&amp;nbsp;финансовому") == "по финансовому"
+
+    def test_real_nbsp_and_spaces_collapsed(self):
+        assert clean_inline("  ООО\xa0ТРАНОМИКА   Ops ") == "ООО ТРАНОМИКА Ops"
+
+    def test_plain_untouched(self):
+        assert clean_inline("Web3 Support (Remote)") == "Web3 Support (Remote)"
+        assert clean_inline(None) == ""
+
+    def test_clean_job_fields(self):
+        j = Job(id="hh_1", title="QA &amp; Support", company="Acme&nbsp;Inc",
+                description="&amp; описание не трогаем", url="u", source="hh.ru",
+                location="Москва&nbsp;")
+        clean_job_fields(j)
+        assert (j.title, j.company, j.location) == ("QA & Support", "Acme Inc", "Москва")
+        assert j.description == "&amp; описание не трогаем"
 
 
 class TestLever:

@@ -57,6 +57,34 @@ def html_to_text(raw: str | None) -> str:
     return BeautifulSoup(unescaped, "html.parser").get_text(separator="\n", strip=True)
 
 
+def clean_inline(text: str | None) -> str:
+    """Однострочное поле (заголовок, компания, город) → чистый текст.
+
+    hh отдаёт заголовок в RSS с ДВОЙНЫМ экранированием: 01.10.2026 в Telegram
+    пришло «Главный специалист по&nbsp;финансовому мониторингу». До этого то же
+    самое чинили по одному парсеру (LinkedIn, RemoteOK, Remote3 — 277 заголовков
+    с `&amp;` в базе), и следующий источник снова приносил сущности. Поэтому
+    распаковываем до упора (не больше трёх слоёв) и схлопываем пробелы —
+    неразрывный `\\xa0` `split()` тоже считает пробелом.
+    """
+    s = text or ""
+    for _ in range(3):
+        unescaped = html.unescape(s)
+        if unescaped == s:
+            break
+        s = unescaped
+    return " ".join(s.split())
+
+
+def clean_job_fields(job) -> None:
+    """Чистит видимые поля вакансии на месте. Вызывается один раз для ВСЕХ
+    источников сразу после сбора (`scheduler.run_once`), а не в каждом парсере."""
+    job.title = clean_inline(job.title)
+    job.company = clean_inline(job.company)
+    if job.location:
+        job.location = clean_inline(job.location)
+
+
 def is_remote_location(location: str | None) -> bool:
     """Локация сама заявляет удалённый формат."""
     return any(w in (location or "").lower() for w in _REMOTE_LOCATION_WORDS)
