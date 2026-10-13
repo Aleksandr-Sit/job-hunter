@@ -15,6 +15,26 @@ geoId и прочитаны локации вакансий, которые он
   Это главный расход времени, поэтому есть `max_descriptions`.
 - При 429 парсер делает паузу с ростом, после `_MAX_429` подряд — сдаётся и
   возвращает то, что успел собрать (пустой список вместо падения пайплайна).
+
+Поиск — через ПУБЛИЧНУЮ страницу `/jobs/search` (с 13.10.2026). Причины:
+- 13.10.2026 guest-поиск `seeMoreJobPostings` начал отвечать 429 на каждый
+  второй запрос: три боевых прогона подряд собрали 0 вакансий. Публичная страница
+  и описания `jobPosting/<id>` в тот же момент отвечали 200 — заблокирован был
+  именно guest-поиск.
+- Публичная страница отдаёт до 60 карточек за ОДИН запрос, guest — 10. Раньше
+  бот брал 3 страницы по 10 = 30, а штатные запросы про русский язык по Кипру и
+  ОАЭ дают 60: во второй половине лежали ARRISE «Account Manager (Russian
+  language)» (35-е место) и S&P Global «Customer Success Manager (Fluent
+  Russian)» (38–41-е) — бот не видел их никогда.
+- Листание публичной страницы (`start=25`) сразу ловит 429, поэтому берётся
+  только первая. Guest-поиск остаётся запасным: если публичная страница вернула
+  пусто (сменилась вёрстка, стена логина), парсер листает guest-страницы как раньше.
+- `f_WT=2` (только удалённые) публичная страница игнорирует; `geoId`, `f_TPR` и
+  `f_C` соблюдает — проверено живыми запросами 13.10.2026.
+
+Описания качаются только для НЕувиденных вакансий (`skip_seen`): та же проверка
+`storage.is_seen_batch`, которой планировщик потом отбрасывает увиденное. Раньше
+каждый прогон заново тянул ~1000 описаний, почти все — уже оценённых вакансий.
 """
 import html
 import logging
@@ -35,6 +55,7 @@ logger = logging.getLogger(__name__)
 _CONFIG = Path(__file__).parent.parent.parent.parent / "config" / "settings.yaml"
 
 _SEARCH = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
+_PUBLIC = "https://www.linkedin.com/jobs/search"
 _POSTING = "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/"
 _HEADERS = {
     "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -56,6 +77,10 @@ _RE_COMPANY = re.compile(r'base-search-card__subtitle"[^>]*>\s*(?:<a[^>]*>)?\s*(
 _RE_LOCATION = re.compile(r'job-search-card__location"[^>]*>\s*([^<]+)')
 _RE_JOB_ID = re.compile(r'-(\d+)$')
 _RE_TAG = re.compile(r"<[^>]+>")
+# Настоящая страница выдачи, даже пустая: «433 Russian jobs in Cyprus»,
+# «Jobs at AMLBot in Worldwide | LinkedIn». У стены логина («LinkedIn Login»,
+# «Sign Up | LinkedIn») слова jobs в заголовке нет.
+_RE_PAGE_OK = re.compile(r"<title>[^<]*\bjobs\b", re.IGNORECASE)
 _RE_WS = re.compile(r"\s+")
 
 
@@ -144,9 +169,36 @@ class LinkedInParser(BaseParser):
 
     # ── Парсинг ───────────────────────────────────────────────────────────────
     def _cards(self, query: str, geo_id: str, start: int) -> list[dict]:
-        url = (f"{_SEARCH}?keywords={urllib.parse.quote(query)}&geoId={geo_id}"
-               f"&f_TPR=r{self.hours_old * 3600}&start={start}")
-        return self._parse_cards(self._get(url))
+        """start=0 — публичная страница (до 60 карточек), дальше — guest-листание."""
+        params = (f"keywords={urllib.parse.quote(query)}&geoId={geo_id}"
+                  f"&f_TPR=r{self.hours_old * 3600}")
+        if start:
+            return self._parse_cards(self._get(f"{_SEARCH}?{params}&start={start}"))
+        return self._public_or_guest(params)
+
+    def _public_or_guest(self, params: str) -> list[dict]:
+        """Публичная страница; guest-листание — только если она не похожа на выдачу.
+
+        Пустая выдача — не повод для запасного пути: у компании без вакансий
+        (AMLBot, Match Systems) настоящая страница содержит 0 карточек, и лишний
+        запрос к guest-поиску — ровно к тому адресу, что ловит 429.
+        """
+        body = self._get(f"{_PUBLIC}?{params}")
+        cards = self._parse_cards(body)
+        # Пустое тело — сетевая ошибка или 429: guest-поиск тут не поможет.
+        if not body or cards or _RE_PAGE_OK.search(body):
+            return cards
+        logger.warning("LinkedIn: публичная страница не похожа на выдачу — guest-листание")
+        out: list[dict] = []
+        for page in range(self.pages_per_query):
+            if self._blocked():
+                break
+            time.sleep(self.delay)
+            got = self._parse_cards(self._get(f"{_SEARCH}?{params}&start={page * _PAGE}"))
+            out.extend(got)
+            if len(got) < _PAGE:
+                break
+        return out
 
     @staticmethod
     def _parse_cards(html: str) -> list[dict]:
@@ -176,9 +228,33 @@ class LinkedInParser(BaseParser):
         отслеживаются компании, которые публикуются редко, и пропустить открытие
         из-за окна в неделю дороже, чем разок увидеть старую вакансию — повторы
         всё равно снимет seen-гейт."""
-        url = (f"{_SEARCH}?f_C={urllib.parse.quote(str(company_id))}"
-               f"&geoId={_WORLDWIDE_GEO}&start={start}")
-        return self._parse_cards(self._get(url))
+        params = f"f_C={urllib.parse.quote(str(company_id))}&geoId={_WORLDWIDE_GEO}"
+        if start:
+            return self._parse_cards(self._get(f"{_SEARCH}?{params}&start={start}"))
+        return self._public_or_guest(params)
+
+    def _unseen(self, cards: list[dict]) -> list[dict]:
+        """Убирает вакансии, которые планировщик всё равно отбросит как увиденные.
+
+        Проверка ровно та же (`is_seen_batch` с текущей версией предфильтра), поэтому
+        воронка не меняется: провизорные отказы старой версии считаются НЕувиденными
+        и после правки критериев получат описание заново. Любая ошибка БД — не повод
+        терять вакансии: тогда качаем всё, как раньше.
+        """
+        if not cards or not getattr(self, "skip_seen", True):
+            return cards
+        try:
+            from ... import storage
+            from ...matcher.pre_filter import _prefilter_version
+            seen = storage.is_seen_batch([f"li_{c['id']}" for c in cards],
+                                         prefilter_version=_prefilter_version())
+        except Exception as e:
+            logger.warning("LinkedIn: проверка увиденных не удалась (%s) — качаем всё", e)
+            return cards
+        if seen:
+            logger.info("LinkedIn: %d из %d уже увидены — описания не качаем",
+                        len(seen), len(cards))
+        return [c for c in cards if f"li_{c['id']}" not in seen]
 
     def _description(self, job_id: str) -> str:
         body = self._get(_POSTING + job_id)
@@ -202,14 +278,10 @@ class LinkedInParser(BaseParser):
             if not cid or self._blocked():
                 continue
             before = len(found)
-            for page in range(self.pages_per_query):
-                cards = self._company_cards(cid, page * _PAGE)
-                for c in cards:
-                    c["geo"] = _WATCH_BUCKET
-                    found.setdefault(c["id"], c)
-                time.sleep(self.delay)
-                if len(cards) < _PAGE:
-                    break
+            for c in self._company_cards(cid, 0):
+                c["geo"] = _WATCH_BUCKET
+                found.setdefault(c["id"], c)
+            time.sleep(self.delay)
             logger.info("LinkedIn watch %s: %d вакансий", cname, len(found) - before)
 
         for geo in self.geos:
@@ -218,28 +290,24 @@ class LinkedInParser(BaseParser):
                 continue
             before = len(found)
             for query in self.queries:
-                for page in range(self.pages_per_query):
-                    if self._blocked():
-                        break
-                    cards = self._cards(query, geo_id, page * _PAGE)
-                    for c in cards:
-                        c["geo"] = geo_name
-                        found.setdefault(c["id"], c)
-                    time.sleep(self.delay)
-                    if len(cards) < _PAGE:
-                        break        # выдача кончилась — дальше страниц нет
                 if self._blocked():
                     break
+                # Один запрос — до 60 карточек (публичная страница, см. шапку модуля)
+                for c in self._cards(query, geo_id, 0):
+                    c["geo"] = geo_name
+                    found.setdefault(c["id"], c)
+                time.sleep(self.delay)
             logger.info("LinkedIn %s: +%d уникальных", geo_name, len(found) - before)
             if self._blocked():
                 break
 
         # Описания — отдельный запрос на вакансию, самая дорогая часть прохода
         jobs: list[Job] = []
-        for i, c in enumerate(_round_robin(list(found.values()))):
+        queue = _round_robin(self._unseen(list(found.values())))
+        for i, c in enumerate(queue):
             if i >= self.max_descriptions or self._blocked():
                 logger.info("LinkedIn: остановились на %d вакансиях из %d",
-                            i, len(found))
+                            i, len(queue))
                 break
             desc = self._description(c["id"])
             time.sleep(self.delay)
