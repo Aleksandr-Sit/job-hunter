@@ -123,6 +123,29 @@ def _round_robin(cards: list[dict]) -> list[dict]:
     return out
 
 
+
+def _triage_queue(cards: list[dict]) -> tuple[list[dict], dict[str, int]]:
+    """Очередь описаний с сортировкой по заголовку (src/matcher/title_triage.py).
+
+    Порядок: high (watch-компании первыми, дальше страны по кругу) -> low стран по
+    кругу -> low watch-компаний в самом конце. drop не качается вовсе: заголовок уже
+    даёт жёсткий отказ, описание его не перевернёт.
+
+    Почему watch-low в конце. Прогон 14.10.2026: Chainalysis отдала 51 вакансию,
+    очередь начиналась с неё целиком, и все 34 описания за два прогона ушли на её
+    инженеров, HR и юристов — ни одной вакансии из стран. Ценные вакансии
+    watch-компаний (Crypto Investigations, AML) по заголовку попадают в high и
+    остаются в начале.
+    """
+    from ...matcher.title_triage import title_triage
+    groups: dict[str, list[dict]] = {"high": [], "low": [], "drop": []}
+    for c in cards:
+        groups[title_triage(c.get("title", ""), c.get("company"))].append(c)
+    low_geo = [c for c in groups["low"] if c.get("geo") != _WATCH_BUCKET]
+    low_watch = [c for c in groups["low"] if c.get("geo") == _WATCH_BUCKET]
+    queue = _round_robin(groups["high"]) + _round_robin(low_geo) + low_watch
+    return queue, {k: len(v) for k, v in groups.items()}
+
 def _clean(text: str) -> str:
     # unescape ПОСЛЕ вырезания тегов (см. _description), иначе экранированный
     # `&lt;script&gt;` превратится в настоящий тег уже после чистки.
@@ -165,6 +188,7 @@ class LinkedInParser(BaseParser):
             except urllib.error.HTTPError as e:
                 if e.code == 429:
                     self._strikes += 1
+                    self._n429 = getattr(self, "_n429", 0) + 1
                     if self._strikes >= _MAX_429:
                         logger.warning("LinkedIn: 429 подряд %d раз — прекращаем цикл",
                                        self._strikes)
@@ -293,8 +317,10 @@ class LinkedInParser(BaseParser):
             logger.warning("LinkedIn: не заданы ни queries/geos, ни watch_companies")
             return []
 
-        self._deadline = time.monotonic() + self.max_minutes * 60
+        started = time.monotonic()
+        self._deadline = started + self.max_minutes * 60
         self._deadline_logged = False
+        self._n429 = 0
         found: dict[str, dict] = {}
 
         # Отслеживаемые компании идут ПЕРВЫМИ. Порядок важен: описания качаются в
@@ -330,7 +356,12 @@ class LinkedInParser(BaseParser):
 
         # Описания — отдельный запрос на вакансию, самая дорогая часть прохода
         jobs: list[Job] = []
-        queue = _round_robin(self._unseen(list(found.values())))
+        logger.info("LinkedIn: поиск занял %.0f мин, 429 за поиск: %d",
+                    (time.monotonic() - started) / 60, self._n429)
+        queue, sizes = _triage_queue(self._unseen(list(found.values())))
+        logger.info("LinkedIn: по заголовку high %d, low %d, drop %d (drop не качаем)",
+                    sizes["high"], sizes["low"], sizes["drop"])
+        n429_search = self._n429
         for i, c in enumerate(queue):
             if i >= self.max_descriptions or self._blocked():
                 logger.info("LinkedIn: остановились на %d вакансиях из %d",
@@ -351,7 +382,8 @@ class LinkedInParser(BaseParser):
                 is_remote=detect_remote(location=c["location"], description=desc),
             ))
 
-        logger.info("LinkedIn: %d вакансий итого", len(jobs))
+        logger.info("LinkedIn: %d вакансий итого, 429 за описания: %d", len(jobs),
+                    self._n429 - n429_search)
         return jobs
 
 
