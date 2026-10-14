@@ -1154,3 +1154,41 @@ class TestLinkedInRussianFalsePositives13Oct:
     def test_real_code_requirements_still_caught(self, text):
         from src.matcher.pre_filter import _CODE_REQUIRED_PATTERN
         assert _CODE_REQUIRED_PATTERN.search(text) is not None
+
+
+class TestRussianSpeakingReplacesDomain14Oct:
+    """Решение владельца 14.10.2026: явный «Russian-speaking» заменяет финтех-домен
+    в ролях поддержки и аккаунт/продаж. Только английские формулировки."""
+
+    def test_russian_speaking_support_passes_without_fintech(self):
+        from src.matcher.pre_filter import passes_hard_gates
+        ok, reasons = passes_hard_gates(
+            "Russian Speaking Customer Service Representative",
+            "We are looking for a Russian-speaking customer service specialist.",
+            "support_fintech")
+        assert ok, reasons
+
+    def test_cis_sales_on_hh_still_needs_domain(self):
+        """«СНГ» на hh — география продаж, а не русскоязычная команда."""
+        from src.matcher.pre_filter import passes_hard_gates
+        ok, _ = passes_hard_gates(
+            "Менеджер по продажам (СНГ)",
+            "Продажи продуктов питания дистрибьюторам в страны СНГ.",
+            "sales_remote")
+        assert not ok
+
+    def test_other_roles_untouched(self):
+        from src.matcher.pre_filter import passes_hard_gates
+        ok, reasons = passes_hard_gates(
+            "Operations Specialist (Russian Speaking)",
+            "Russian-speaking operations specialist for our logistics team.",
+            "crypto_ops")
+        assert not ok and "не та область" in reasons[0]
+
+    def test_gaming_support_passes_by_industry(self):
+        from src.matcher.pre_filter import passes_hard_gates
+        ok, reasons = passes_hard_gates(
+            "Russian / English Gaming Support Agent",
+            "Player support for a leading gaming company, Russian / English.",
+            "support_fintech")
+        assert ok, reasons

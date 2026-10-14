@@ -1044,6 +1044,25 @@ roles:
       - "обработке заявок"
       - "обработки заявок"
     must_domain:
+      # Отрасли русскоязычной поддержки и аккаунт-менеджмента с LinkedIn — решение
+      # владельца 14.10.2026. Голого "game" нет: «game-changing career» (Concentrix).
+      # Замер: на 3615 вакансиях hh/ATS/Telegram +0, на 75 русскоязычных LinkedIn +4
+      # (5CA «Russian / English Gaming Support Agent» — 89, Scrambly, Fizzy Bubbly, DT).
+      - "gaming"
+      - "igaming"
+      - "video game*"
+      - "game studio"
+      - "геймдев"
+      - "игровой индустри*"
+      - "adtech"
+      - "ad tech"
+      - "advertising technology"
+      - "ad network"
+      - "рекламн* платформ*"
+      - "financial data"
+      - "market data"
+      - "credit rating*"
+      - "financial information"
       - "финтех"
       - "fintech"
       - "банк*"
@@ -1170,6 +1189,25 @@ roles:
       - "ключевыми клиентами"
       - "менеджер по сопровождению клиентов"
     must_domain:
+      # Отрасли русскоязычной поддержки и аккаунт-менеджмента с LinkedIn — решение
+      # владельца 14.10.2026. Голого "game" нет: «game-changing career» (Concentrix).
+      # Замер: на 3615 вакансиях hh/ATS/Telegram +0, на 75 русскоязычных LinkedIn +4
+      # (5CA «Russian / English Gaming Support Agent» — 89, Scrambly, Fizzy Bubbly, DT).
+      - "gaming"
+      - "igaming"
+      - "video game*"
+      - "game studio"
+      - "геймдев"
+      - "игровой индустри*"
+      - "adtech"
+      - "ad tech"
+      - "advertising technology"
+      - "ad network"
+      - "рекламн* платформ*"
+      - "financial data"
+      - "market data"
+      - "credit rating*"
+      - "financial information"
       # крипто/web3
       - "крипто*"
       - "блокчейн*"

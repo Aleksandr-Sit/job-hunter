@@ -964,6 +964,23 @@ def _extra_hard_gates(title: str, text: str, role_key: str) -> str | None:
     return None
 
 
+# Русскоязычный контур заменяет домен в ролях поддержки и аккаунт/продаж — решение
+# владельца 14.10.2026 по ресерчу LinkedIn. Русскоязычная поддержка и аккаунт-
+# менеджмент за рубежом срезались правилом «нет финтеха»: S&P Global «Customer
+# Success Manager (Fluent Russian)», ExoClick «Advertiser Account Manager (Russian
+# Speaker)», «Russian Speaking Customer Service Representative».
+# Только АНГЛИЙСКИЕ формулировки: на hh любая вакансия русскоязычная, а «СНГ/CIS»
+# там означает географию продаж. Замер варианта с «СНГ/русскоязычн»: +5 мусора с hh
+# («Менеджер по продажам СНГ — продукты питания», «ПЦР-оборудование»). С английскими
+# формулировками на 3615 вакансиях hh/ATS/Telegram — +0, на 75 русскоязычных LinkedIn
+# — +6, пропало 0.
+_RU_DOMAIN_ROLES = frozenset({"support_fintech", "sales_remote"})
+_RU_SPEAKING_EN = re.compile(
+    r"russian[\s-]speak\w*|russian\s+speakers?|(?:fluent|native)\s+(?:in\s+)?russian|"
+    r"russian[\s-]language\s+(?:support|desk|team|required)|russian\s+desk",
+    re.IGNORECASE)
+
+
 def passes_hard_gates(title: str, text: str, role_key: str) -> tuple[bool, list[str]]:
     """Дешёвый предфильтр. Возвращает (bool, [причины])."""
     role = CRITERIA["roles"][role_key]
@@ -984,6 +1001,8 @@ def passes_hard_gates(title: str, text: str, role_key: str) -> tuple[bool, list[
     if role.get("must_domain"):
         n_dom, _ = _hits(role["must_domain"], blob)
         if n_dom == 0:
+            if role_key in _RU_DOMAIN_ROLES and _RU_SPEAKING_EN.search(blob):
+                return True, ["gate ok (русскоязычный контур вместо домена)"]
             return False, ["нет крипто/web3 контекста (не та область)"]
 
     return True, ["gate ok"]
