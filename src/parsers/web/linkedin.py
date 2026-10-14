@@ -13,8 +13,9 @@ geoId и прочитаны локации вакансий, которые он
 Ограничения:
 - Карточка поиска НЕ содержит описания — его тянем отдельным запросом на вакансию.
   Это главный расход времени, поэтому есть `max_descriptions`.
-- При 429 парсер делает паузу с ростом, после `_MAX_429` подряд — сдаётся и
-  возвращает то, что успел собрать (пустой список вместо падения пайплайна).
+- При 429 парсер ждёт 60, затем 120 с и повторяет; после `_MAX_429` отказов
+  подряд — сдаётся и возвращает то, что успел собрать (пустой список вместо
+  падения пайплайна). Поиск идёт с отдельной длинной паузой `search_delay`.
 
 Поиск — через ПУБЛИЧНУЮ страницу `/jobs/search` (с 13.10.2026). Причины:
 - 13.10.2026 guest-поиск `seeMoreJobPostings` начал отвечать 429 на каждый
@@ -62,7 +63,12 @@ _HEADERS = {
                    "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"),
     "Accept-Language": "en-US,en;q=0.9",
 }
-_MAX_429 = 3          # подряд, после чего считаем себя забаненными на этот цикл
+# 429 у LinkedIn — ограничение ЧАСТОТЫ, а не бан (замер с VPS 14.10.2026: при паузе
+# 10 с между поисками 4 ответа из 6 — 200, отказы вперемешку). Поэтому после 429
+# ждём долго и повторяем, а сдаёмся только после серии. Прежние 3 отказа с паузами
+# 15/30 с обрывали весь прогон 13.10.2026: три прогона подряд — 0 вакансий.
+_MAX_429 = 6          # подряд, после чего считаем себя забаненными на этот цикл
+_BACKOFF_429 = 60     # секунд, растёт с номером попытки: 60, 120
 _PAGE = 10            # столько карточек отдаёт одна страница выдачи
 
 # geoId «весь мир». Нужен для слежки за компанией: фильтр `f_C` сам по себе гостевым
@@ -136,6 +142,9 @@ class LinkedInParser(BaseParser):
         self.hours_old: int = p.get("hours_old", 168)
         self.max_descriptions: int = p.get("max_descriptions", 400)
         self.delay: float = p.get("delay_seconds", 0.7)
+        # Поиск ограничен по частоте жёстче описаний (14.10.2026: описания с VPS —
+        # 200, поиск — 429), поэтому у него своя, длинная пауза.
+        self.search_delay: float = p.get("search_delay_seconds", 10)
         self.watch_companies: list[dict] = p.get("watch_companies", [])
         self._strikes = 0
 
@@ -155,7 +164,8 @@ class LinkedInParser(BaseParser):
                         logger.warning("LinkedIn: 429 подряд %d раз — прекращаем цикл",
                                        self._strikes)
                         return ""
-                    time.sleep(15 * (attempt + 1))
+                    if attempt < 2:
+                        time.sleep(_BACKOFF_429 * (attempt + 1))
                     continue
                 logger.debug("LinkedIn HTTP %s: %s", e.code, url[:90])
                 return ""
@@ -193,7 +203,7 @@ class LinkedInParser(BaseParser):
         for page in range(self.pages_per_query):
             if self._blocked():
                 break
-            time.sleep(self.delay)
+            time.sleep(self.search_delay)
             got = self._parse_cards(self._get(f"{_SEARCH}?{params}&start={page * _PAGE}"))
             out.extend(got)
             if len(got) < _PAGE:
@@ -281,7 +291,7 @@ class LinkedInParser(BaseParser):
             for c in self._company_cards(cid, 0):
                 c["geo"] = _WATCH_BUCKET
                 found.setdefault(c["id"], c)
-            time.sleep(self.delay)
+            time.sleep(self.search_delay)
             logger.info("LinkedIn watch %s: %d вакансий", cname, len(found) - before)
 
         for geo in self.geos:
@@ -296,7 +306,7 @@ class LinkedInParser(BaseParser):
                 for c in self._cards(query, geo_id, 0):
                     c["geo"] = geo_name
                     found.setdefault(c["id"], c)
-                time.sleep(self.delay)
+                time.sleep(self.search_delay)
             logger.info("LinkedIn %s: +%d уникальных", geo_name, len(found) - before)
             if self._blocked():
                 break

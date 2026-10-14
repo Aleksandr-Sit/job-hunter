@@ -68,7 +68,7 @@ class TestWatchOrdering:
         p.geos = [{"id": "106774002", "name": "Кипр"}]
         p.pages_per_query = 1
         p.hours_old = 168
-        p.delay = 0
+        p.delay = p.search_delay = 0
         p.max_descriptions = 0        # описания не качаем — проверяем только порядок
         p._strikes = 0
         p.watch_companies = [{"name": "AMLBot", "id": "64276802"}]
@@ -85,7 +85,7 @@ class TestWatchOrdering:
         p = _parser()
         p.enabled = True
         p.queries, p.geos = [], []
-        p.pages_per_query, p.hours_old, p.delay = 1, 168, 0
+        p.pages_per_query, p.hours_old, p.delay, p.search_delay = 1, 168, 0, 0
         p.max_descriptions, p._strikes = 0, 0
         p.watch_companies = [{"name": "AMLBot", "id": "64276802"}]
         called = []
@@ -102,6 +102,7 @@ class TestPublicSearchPage:
     def _p(self):
         p = _parser()
         p.hours_old, p.pages_per_query, p.delay, p._strikes = 168, 3, 0, 0
+        p.search_delay = 0
         return p
 
     def test_first_page_goes_to_public_search(self):
