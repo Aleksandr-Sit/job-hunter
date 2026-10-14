@@ -25,7 +25,12 @@ def build_parsers():
     from src.parsers.registry import build_parsers as _build
 
     cfg = yaml.safe_load((_ROOT / "config" / "settings.yaml").read_text(encoding="utf-8"))
-    return _build(cfg)
+    parsers = _build(cfg)
+    # Батч для замеров — снимок ВСЕГО потока, а не только новых вакансий: боевой
+    # LinkedIn пропускает описания увиденных (skip_seen), здесь они нужны.
+    for p in parsers:
+        p.skip_seen = False
+    return parsers
 
 
 def fetch_jobs() -> list[dict]:

@@ -48,11 +48,21 @@ _ROLE_SPECIFIC_GATE_EXEMPT = {"ai_automation"}
 _FINANCE_TITLE_WORDS = {"portfolio", "fund", "quant", "quantitative"}
 
 # ── 2. Требования писать код (в описании) ─────────────────────────────────────
+# Два слова из списков — ещё и обычные слова других языков (13.10.2026, LinkedIn):
+# - «go» — английский глагол: «help companies BUILD stronger businesses — helping
+#   them GO from doing digital…» (Cognizant, Video Content Moderator with Russian)
+#   резалось как «требуется писать код». Язык Go пишут как «golang» или ловят по
+#   титулу «Go Developer» (dev-гейт заголовка).
+# - «jest» — польское «есть/является»: любая польская вакансия (Ruukki, Technical
+#   Support Specialist) резалась как требующая JS-фреймворк. Считаем фреймворком,
+#   только если рядом слова про тесты.
 _CODE_REQUIRED_PATTERN = re.compile(
     r'(?:'
-    r'\b(?:selenium|cypress|playwright|pytest|jest|mocha|appium|robot\s+framework)\b'
+    r'\b(?:selenium|cypress|playwright|pytest|mocha|appium|robot\s+framework)\b'
+    r'|\bjest\b(?=.{0,40}\b(?:tests?|testing|unit|framework|enzyme)\b)'
+    r'|\b(?:tests?|testing|unit|framework)\b.{0,40}\bjest\b'
     r'|\b(?:kubernetes|k8s|helm|terraform|ansible|ci/cd|jenkins|github\s+actions)\s+(?:experience|required|skills?|знани)'
-    r'|\b(?:write|develop|code|program|implement|build)\b.{0,40}\b(?:python|javascript|typescript|rust|golang|go|solidity|java|c\+\+)\b'
+    r'|\b(?:write|develop|code|program|implement|build)\b.{0,40}\b(?:python|javascript|typescript|rust|golang|solidity|java|c\+\+)\b'
     r'|\b(?:python|javascript|typescript|rust|golang|solidity)\b.{0,40}\b(?:developer|development|programming|coding|написани)\b'
     r'|\bsmart\s+contract\s+(?:develop|creat|writ|build|deploy(?:ment)?)\b'
     r')',
@@ -495,9 +505,69 @@ _LANG_PLUS_PATTERN = re.compile(
     # «ARE a plus», «WILL BE a plus» — были не покрыты, ловилось только «is a plus»
     # (найдено 14.08.2026 при разборе Teroxx).
     r'((?:is|are|would\s+be|will\s+be|as)\s+a\s+plus|nice[\s-]to[\s-]have|'
-    r'advantage|beneficial|preferred|bonus|плюсом|преимуществ|приветствуется|желательно)',
+    r'advantage|beneficial|preferred|bonus|плюсом|преимуществ|приветствуется|желательно|'
+    # «French or Chinese HIGHLY VALUED» (ExoClick, 13.10.2026) — не требование.
+    # Функция общая с гейтом английского, поэтому только устойчивые обороты:
+    # голое «appreciated» («your work will be appreciated») гасило бы требование.
+    r'highly\s+valued|(?:is|are|will\s+be)\s+(?:highly\s+)?(?:valued|appreciated)|'
+    r'(?:is|are|would\s+be|will\s+be)\s+an?\s+(?:strong\s+|real\s+)?asset)',
     re.IGNORECASE,
 )
+
+# Название языка, за которым идёт право/гражданство, — это юрисдикция, а не язык:
+# «eligibility to work in accordance with PORTUGUESE LAW» (Concentrix, AI Labeling
+# Agent (Russian-Speaking), Лиссабон, 13.10.2026) резалось как «нужен португальский».
+_LANG_AS_JURISDICTION = re.compile(
+    r'^\s+(?:labou?r\s+)?(?:law|laws|legislation|regulations?|citizens?|citizenship|'
+    r'nationals?|nationality|residents?|residency|authorities|entity|subsidiary)\b',
+    re.IGNORECASE)
+
+# Языковые курсы в списке льгот — тоже не требование: «english, PORTUGUESE &
+# spanish CLASSES; training budget» (ExoClick, Advertiser Account Manager (Russian
+# Speaker), 13.10.2026). Язык может стоять в начале перечисления, курсы — в конце.
+_LANG_AS_BENEFIT = re.compile(
+    r'^(?:\s*(?:,|&|/|\band\b|\bor\b|\bи\b)\s*[a-zа-яё]+)*\s+(?:language\s+)?'
+    r'(?:classes|courses|lessons|tuition|tutoring|курс\w*|урок\w*|заняти\w*)\b',
+    re.IGNORECASE)
+# Русский порядок слов обратный: «бесплатные КУРСЫ английского и испанского».
+_LANG_BENEFIT_BEFORE = re.compile(
+    r'(?:classes|courses|lessons|курс\w*|урок\w*|заняти\w*)\s+(?:по\s+)?'
+    r'(?:[a-zа-яё]+\s*(?:,|&|\band\b|\bи\b)\s*)*$',
+    re.IGNORECASE)
+
+# Русский — один из вариантов: «German OR Russian», «Russian/Ukrainian»,
+# «Mandarin, Cantonese or Russian». Кандидату русский родной, значит требование
+# выполнено. Между нашим языком и русским допускается только перечисление языков.
+_RU_WORD = r'(?:russian|русск\w*)'
+# Запятая сама по себе — НЕ выбор: «fluent in Russian, German and English» требует
+# все три. Альтернативу задают только «or», «или», «либо» и «/».
+_RU_ALT_AFTER = re.compile(
+    r'^(?:\s*,\s*[a-zа-яё]+)*\s*(?:/|\bor\b|\bили\b|\bлибо\b)\s*' + _RU_WORD,
+    re.IGNORECASE)
+_RU_ALT_BEFORE = re.compile(
+    _RU_WORD + r'\s*(?:/|\bor\b|\bили\b|\bлибо\b)\s*$', re.IGNORECASE)
+# Каталог «на выбор»: «our teams are proficient in either one or more of the
+# following languages: english, french, …, russian, and many more» (Accenture,
+# Inside Sales with Russian and English, 13.10.2026). Русский в каталоге — значит
+# ни один из перечисленных языков не обязателен по отдельности.
+_LANG_CATALOG = re.compile(
+    r'(?:one\s+or\s+more|any|either|one)\s+of\s+the\s+following\s+languages', re.IGNORECASE)
+_CLAUSE_BREAK = re.compile(r'[.;•\n]')
+
+
+def _russian_alternative(blob: str, start: int, end: int) -> bool:
+    """True, если упомянутый язык стоит в ряду альтернатив вместе с русским."""
+    if _RU_ALT_AFTER.match(blob[end:end + 80]):
+        return True
+    if _RU_ALT_BEFORE.search(blob[max(0, start - 80):start]):
+        return True
+    left = blob[max(0, start - 300):start]
+    breaks = list(_CLAUSE_BREAK.finditer(left))
+    clause_start = breaks[-1].end() if breaks else 0
+    right = blob[end:end + 300]
+    rb = _CLAUSE_BREAK.search(right)
+    clause = left[clause_start:] + blob[start:end] + (right[:rb.start()] if rb else right)
+    return bool(_LANG_CATALOG.search(clause)) and bool(re.search(_RU_WORD, clause, re.I))
 
 
 # Заголовки разделов. Язык, упомянутый в разделе «желательно», НЕ является
@@ -668,6 +738,13 @@ def _foreign_lang_required(blob: str) -> bool:
     (2) язык внутри раздела «Preferred/Nice to have» — тоже не требование.
     """
     for m in _FOREIGN_LANG_PATTERN.finditer(blob):
+        if _LANG_AS_JURISDICTION.match(blob[m.end(): m.end() + 40]):
+            continue
+        if (_LANG_AS_BENEFIT.match(blob[m.end(): m.end() + 60])
+                or _LANG_BENEFIT_BEFORE.search(blob[max(0, m.start() - 60): m.start()])):
+            continue
+        if _russian_alternative(blob, m.start(), m.end()):
+            continue
         # Раньше «плюс» искался в окне ±60 без разбора, к чему он относится.
         # «professional fluency in English and Greek (written and verbal) and
         # German speakers IS AN ADVANTAGE» (Teroxx, 14.08.2026): пометка про
@@ -887,6 +964,23 @@ def _extra_hard_gates(title: str, text: str, role_key: str) -> str | None:
     return None
 
 
+# Русскоязычный контур заменяет домен в ролях поддержки и аккаунт/продаж — решение
+# владельца 14.10.2026 по ресерчу LinkedIn. Русскоязычная поддержка и аккаунт-
+# менеджмент за рубежом срезались правилом «нет финтеха»: S&P Global «Customer
+# Success Manager (Fluent Russian)», ExoClick «Advertiser Account Manager (Russian
+# Speaker)», «Russian Speaking Customer Service Representative».
+# Только АНГЛИЙСКИЕ формулировки: на hh любая вакансия русскоязычная, а «СНГ/CIS»
+# там означает географию продаж. Замер варианта с «СНГ/русскоязычн»: +5 мусора с hh
+# («Менеджер по продажам СНГ — продукты питания», «ПЦР-оборудование»). С английскими
+# формулировками на 3615 вакансиях hh/ATS/Telegram — +0, на 75 русскоязычных LinkedIn
+# — +6, пропало 0.
+_RU_DOMAIN_ROLES = frozenset({"support_fintech", "sales_remote"})
+_RU_SPEAKING_EN = re.compile(
+    r"russian[\s-]speak\w*|russian\s+speakers?|(?:fluent|native)\s+(?:in\s+)?russian|"
+    r"russian[\s-]language\s+(?:support|desk|team|required)|russian\s+desk",
+    re.IGNORECASE)
+
+
 def passes_hard_gates(title: str, text: str, role_key: str) -> tuple[bool, list[str]]:
     """Дешёвый предфильтр. Возвращает (bool, [причины])."""
     role = CRITERIA["roles"][role_key]
@@ -907,6 +1001,8 @@ def passes_hard_gates(title: str, text: str, role_key: str) -> tuple[bool, list[
     if role.get("must_domain"):
         n_dom, _ = _hits(role["must_domain"], blob)
         if n_dom == 0:
+            if role_key in _RU_DOMAIN_ROLES and _RU_SPEAKING_EN.search(blob):
+                return True, ["gate ok (русскоязычный контур вместо домена)"]
             return False, ["нет крипто/web3 контекста (не та область)"]
 
     return True, ["gate ok"]

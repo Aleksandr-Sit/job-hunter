@@ -1098,3 +1098,97 @@ class TestCyrillicLanguageNeedsContext:
     def test_english_half_is_not_affected(self):
         # Контекст не требуется для латиницы — проверяем, что не сломали.
         assert _foreign_lang_required(_n("High proficiency in spoken Ukrainian is a must")) is True
+
+
+class TestLinkedInRussianFalsePositives13Oct:
+    """Ресерч русскоязычных вакансий LinkedIn 13.10.2026: гейты кода и «третьего
+    языка» резали вакансии по словам, которые не являются требованием."""
+
+    @pytest.mark.parametrize("text", [
+        # «Portuguese law» — юрисдикция, не язык (Concentrix, AI Labeling Agent)
+        "eligibility to work in accordance with portuguese law, only applicants authorized",
+        # «highly valued» — пометка «плюс» (ExoClick, Advertiser Account Manager)
+        "strong team player. french or chinese highly valued. daily tasks include",
+        # языковые курсы в льготах (ExoClick)
+        "exogroup university program; english, portuguese & spanish classes; training budget",
+        "бесплатные курсы английского и испанского языка",
+        # русский — один из вариантов (Accenture, Binance P2P Growth Ops CIS/CEE)
+        "our teams are proficient in either one or more of the following languages: "
+        "english, french, german, russian, and many more.",
+        "fluency in ukrainian or russian language is needed for this position",
+        "requirements: fluent mandarin, cantonese or russian",
+        "russian/ukrainian speakers wanted",
+    ])
+    def test_not_a_foreign_language_requirement(self, text):
+        from src.matcher.pre_filter import _foreign_lang_required
+        assert _foreign_lang_required(text) is False
+
+    @pytest.mark.parametrize("text", [
+        "languages: fluent greek and english, written and spoken",
+        "fluent in russian, german and english",                  # запятая — не выбор
+        "fluent german required, russian or ukrainian is a plus",
+        "language proficiency: russian and ukrainian or belarusian — fluent",
+        "владение русским и узбекским языками",
+        "fluent spanish and english, courses on our product provided",
+    ])
+    def test_real_requirements_still_gated(self, text):
+        from src.matcher.pre_filter import _foreign_lang_required
+        assert _foreign_lang_required(text) is True
+
+    @pytest.mark.parametrize("text", [
+        # английское «go» (Cognizant, Video Content Moderator with Russian)
+        "we help companies build stronger businesses — helping them go from doing digital",
+        # польское «jest» = «есть» (Ruukki, Technical Support Specialist)
+        "pracę w firmie, która jest liderem na rynku skandynawskim",
+    ])
+    def test_ordinary_words_are_not_code(self, text):
+        from src.matcher.pre_filter import _CODE_REQUIRED_PATTERN
+        assert _CODE_REQUIRED_PATTERN.search(text) is None
+
+    @pytest.mark.parametrize("text", [
+        "experience with jest unit tests and cypress",
+        "unit testing with jest",
+        "build backend services in golang",
+        "you will write python scripts for automation",
+    ])
+    def test_real_code_requirements_still_caught(self, text):
+        from src.matcher.pre_filter import _CODE_REQUIRED_PATTERN
+        assert _CODE_REQUIRED_PATTERN.search(text) is not None
+
+
+class TestRussianSpeakingReplacesDomain14Oct:
+    """Решение владельца 14.10.2026: явный «Russian-speaking» заменяет финтех-домен
+    в ролях поддержки и аккаунт/продаж. Только английские формулировки."""
+
+    def test_russian_speaking_support_passes_without_fintech(self):
+        from src.matcher.pre_filter import passes_hard_gates
+        ok, reasons = passes_hard_gates(
+            "Russian Speaking Customer Service Representative",
+            "We are looking for a Russian-speaking customer service specialist.",
+            "support_fintech")
+        assert ok, reasons
+
+    def test_cis_sales_on_hh_still_needs_domain(self):
+        """«СНГ» на hh — география продаж, а не русскоязычная команда."""
+        from src.matcher.pre_filter import passes_hard_gates
+        ok, _ = passes_hard_gates(
+            "Менеджер по продажам (СНГ)",
+            "Продажи продуктов питания дистрибьюторам в страны СНГ.",
+            "sales_remote")
+        assert not ok
+
+    def test_other_roles_untouched(self):
+        from src.matcher.pre_filter import passes_hard_gates
+        ok, reasons = passes_hard_gates(
+            "Operations Specialist (Russian Speaking)",
+            "Russian-speaking operations specialist for our logistics team.",
+            "crypto_ops")
+        assert not ok and "не та область" in reasons[0]
+
+    def test_gaming_support_passes_by_industry(self):
+        from src.matcher.pre_filter import passes_hard_gates
+        ok, reasons = passes_hard_gates(
+            "Russian / English Gaming Support Agent",
+            "Player support for a leading gaming company, Russian / English.",
+            "support_fintech")
+        assert ok, reasons
