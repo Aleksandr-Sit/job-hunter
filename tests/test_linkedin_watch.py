@@ -69,6 +69,7 @@ class TestWatchOrdering:
         p.pages_per_query = 1
         p.hours_old = 168
         p.delay = p.search_delay = 0
+        p.max_minutes = 45
         p.max_descriptions = 0        # описания не качаем — проверяем только порядок
         p._strikes = 0
         p.watch_companies = [{"name": "AMLBot", "id": "64276802"}]
@@ -86,6 +87,7 @@ class TestWatchOrdering:
         p.enabled = True
         p.queries, p.geos = [], []
         p.pages_per_query, p.hours_old, p.delay, p.search_delay = 1, 168, 0, 0
+        p.max_minutes = 45
         p.max_descriptions, p._strikes = 0, 0
         p.watch_companies = [{"name": "AMLBot", "id": "64276802"}]
         called = []
@@ -168,3 +170,21 @@ class TestSkipSeen:
             raise RuntimeError("no db")
         monkeypatch.setattr(storage, "is_seen_batch", boom)
         assert len(p._unseen([{"id": "1"}])) == 1
+
+
+class TestStageDeadline:
+    def test_blocked_after_deadline(self, monkeypatch):
+        """Редкий успех сбрасывает счётчик 429 подряд — без потолка времени парсер
+        не сдаётся никогда (замер 14.10.2026: описания 4,5 часа)."""
+        import time as _t
+        p = _parser()
+        p._strikes, p.max_minutes = 0, 45
+        p._deadline = _t.monotonic() - 1
+        assert p._blocked() is True
+
+    def test_not_blocked_before_deadline(self):
+        import time as _t
+        p = _parser()
+        p._strikes, p.max_minutes = 0, 45
+        p._deadline = _t.monotonic() + 600
+        assert p._blocked() is False

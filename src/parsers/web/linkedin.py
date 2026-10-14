@@ -145,6 +145,11 @@ class LinkedInParser(BaseParser):
         # Поиск ограничен по частоте жёстче описаний (14.10.2026: описания с VPS —
         # 200, поиск — 429), поэтому у него своя, длинная пауза.
         self.search_delay: float = p.get("search_delay_seconds", 10)
+        # Потолок времени на всю стадию LinkedIn. Без него терпеливые повторы после
+        # 429 растягивают прогон на часы: редкий успех сбрасывает счётчик отказов
+        # подряд, и парсер не сдаётся никогда. Замер 14.10.2026 из дома: поиск по
+        # 11 странам — час, описания — 4,5 часа и не закончились.
+        self.max_minutes: float = p.get("max_minutes", 45)
         self.watch_companies: list[dict] = p.get("watch_companies", [])
         self._strikes = 0
 
@@ -175,7 +180,17 @@ class LinkedInParser(BaseParser):
         return ""
 
     def _blocked(self) -> bool:
-        return self._strikes >= _MAX_429
+        """Пора остановиться: серия 429 подряд или вышло время стадии."""
+        if self._strikes >= _MAX_429:
+            return True
+        deadline = getattr(self, "_deadline", None)
+        if deadline is not None and time.monotonic() > deadline:
+            if not getattr(self, "_deadline_logged", False):
+                self._deadline_logged = True
+                logger.warning("LinkedIn: вышло время стадии (%s мин) — отдаём собранное",
+                               self.max_minutes)
+            return True
+        return False
 
     # ── Парсинг ───────────────────────────────────────────────────────────────
     def _cards(self, query: str, geo_id: str, start: int) -> list[dict]:
@@ -278,6 +293,8 @@ class LinkedInParser(BaseParser):
             logger.warning("LinkedIn: не заданы ни queries/geos, ни watch_companies")
             return []
 
+        self._deadline = time.monotonic() + self.max_minutes * 60
+        self._deadline_logged = False
         found: dict[str, dict] = {}
 
         # Отслеживаемые компании идут ПЕРВЫМИ. Порядок важен: описания качаются в
