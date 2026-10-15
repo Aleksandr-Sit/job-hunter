@@ -138,13 +138,19 @@ def _triage_queue(cards: list[dict]) -> tuple[list[dict], dict[str, int]]:
     остаются в начале.
     """
     from ...matcher.title_triage import title_triage
-    groups: dict[str, list[dict]] = {"high": [], "low": [], "drop": []}
     for c in cards:
-        groups[title_triage(c.get("title", ""), c.get("company"))].append(c)
-    low_geo = [c for c in groups["low"] if c.get("geo") != _WATCH_BUCKET]
-    low_watch = [c for c in groups["low"] if c.get("geo") == _WATCH_BUCKET]
-    queue = _round_robin(groups["high"]) + _round_robin(low_geo) + low_watch
-    return queue, {k: len(v) for k, v in groups.items()}
+        c["tier"] = title_triage(c.get("title", ""), c.get("company"))
+    sizes = {t: sum(1 for c in cards if c["tier"] == t) for t in ("high", "low", "drop")}
+    return _order_by_tier([c for c in cards if c["tier"] != "drop"]), sizes
+
+
+def _order_by_tier(cards: list[dict]) -> list[dict]:
+    """Порядок описаний для карточек с готовым полем tier (см. _triage_queue)."""
+    high = [c for c in cards if c.get("tier") == "high"]
+    low_geo = [c for c in cards if c.get("tier") != "high" and c.get("geo") != _WATCH_BUCKET]
+    low_watch = [c for c in cards if c.get("tier") != "high" and c.get("geo") == _WATCH_BUCKET]
+    return _round_robin(high) + _round_robin(low_geo) + low_watch
+
 
 def _clean(text: str) -> str:
     # unescape ПОСЛЕ вырезания тегов (см. _description), иначе экранированный
@@ -174,6 +180,11 @@ class LinkedInParser(BaseParser):
         # 11 странам — час, описания — 4,5 часа и не закончились.
         self.max_minutes: float = p.get("max_minutes", 45)
         self.watch_companies: list[dict] = p.get("watch_companies", [])
+        # Ротация стран (14.10.2026): поиск по всем 11 странам занимал ~38 мин из
+        # 45, на описания оставалось ~7. Прогон ищет geos_per_run стран, которые
+        # искались давнее всех; 0 — все страны каждый прогон.
+        self.geos_per_run: int = p.get("geos_per_run", 0)
+        self.pool_max_age_days: int = p.get("pool_max_age_days", 7)
         self._strikes = 0
 
     # ── HTTP ──────────────────────────────────────────────────────────────────
@@ -323,9 +334,8 @@ class LinkedInParser(BaseParser):
         self._n429 = 0
         found: dict[str, dict] = {}
 
-        # Отслеживаемые компании идут ПЕРВЫМИ. Порядок важен: описания качаются в
-        # порядке вставки и обрываются на max_descriptions (400) — в хвосте очереди
-        # редкая вакансия из watch-списка просто не доехала бы до скоринга.
+        # Отслеживаемые компании ищутся каждый прогон (3 запроса), без ротации.
+        # Очередь описаний строит _order_by_tier: их high — первыми, low — в конце.
         for comp in self.watch_companies:
             cid, cname = str(comp.get("id", "")), comp.get("name", "?")
             if not cid or self._blocked():
@@ -337,9 +347,15 @@ class LinkedInParser(BaseParser):
             time.sleep(self.search_delay)
             logger.info("LinkedIn watch %s: %d вакансий", cname, len(found) - before)
 
+        from ... import storage
+        names = [g.get("name", "?") for g in self.geos if g.get("id")]
+        if self.geos_per_run and self.geos_per_run < len(names):
+            picked = set(storage.li_geo_oldest(names, self.geos_per_run))
+        else:
+            picked = set(names)
         for geo in self.geos:
             geo_id, geo_name = str(geo.get("id", "")), geo.get("name", "?")
-            if not geo_id:
+            if not geo_id or geo_name not in picked:
                 continue
             before = len(found)
             for query in self.queries:
@@ -353,38 +369,72 @@ class LinkedInParser(BaseParser):
             logger.info("LinkedIn %s: +%d уникальных", geo_name, len(found) - before)
             if self._blocked():
                 break
+            storage.li_geo_mark(geo_name)  # только если страна пройдена целиком
 
-        # Описания — отдельный запрос на вакансию, самая дорогая часть прохода
-        jobs: list[Job] = []
-        logger.info("LinkedIn: поиск занял %.0f мин, 429 за поиск: %d",
-                    (time.monotonic() - started) / 60, self._n429)
-        queue, sizes = _triage_queue(self._unseen(list(found.values())))
-        logger.info("LinkedIn: по заголовку high %d, low %d, drop %d (drop не качаем)",
-                    sizes["high"], sizes["low"], sizes["drop"])
-        n429_search = self._n429
+        logger.info("LinkedIn: поиск по %d стран(ам) занял %.0f мин, 429 за поиск: %d",
+                    len(picked), (time.monotonic() - started) / 60, self._n429)
+        cards = self._unseen(list(found.values()))
+        _, sizes = _triage_queue(cards)
+        added = storage.li_pool_add([c for c in cards if c["tier"] != "drop"],
+                                    {c["id"]: c["tier"] for c in cards})
+        logger.info("LinkedIn: по заголовку high %d, low %d, drop %d (drop не качаем); "
+                    "новых в пул %d", sizes["high"], sizes["low"], sizes["drop"], added)
+        self._fetch_pool()
+        return self._ready_jobs()
+
+    # ── Пул: описания и готовые вакансии ──────────────────────────────────────
+    def _fetch_pool(self) -> int:
+        """Качает описания из пула по приоритету до дедлайна. Возвращает число скачанных."""
+        from ... import storage
+        pending, expired = storage.li_pool_pending(self.pool_max_age_days)
+        if expired:
+            logger.warning("LinkedIn пул: %d карточек пролежали дольше %d дн. без "
+                           "описания и выброшены", expired, self.pool_max_age_days)
+        queue = _order_by_tier(pending)
+        n429_before, done = self._n429, 0
         for i, c in enumerate(queue):
             if i >= self.max_descriptions or self._blocked():
-                logger.info("LinkedIn: остановились на %d вакансиях из %d",
-                            i, len(queue))
                 break
             desc = self._description(c["id"])
             time.sleep(self.delay)
-            if not desc:
-                continue
-            jobs.append(Job(
-                id=f"li_{c['id']}",
-                title=c["title"],
-                company=c["company"],
-                description=clean_description(desc),
-                url=c["url"],
-                source="linkedin.com",
-                location=c["location"],
-                is_remote=detect_remote(location=c["location"], description=desc),
-            ))
+            if desc:
+                storage.li_pool_set_description(c["id"], desc)
+                done += 1
+            else:
+                storage.li_pool_fail(c["id"])
+        st = storage.li_pool_stats()
+        logger.info("LinkedIn пул: скачано описаний %d из %d в очереди, 429: %d; "
+                    "ждут описания high %d / low %d, с описанием %d",
+                    done, len(queue), self._n429 - n429_before,
+                    st["high"], st["low"], st["ready"])
+        return done
 
-        logger.info("LinkedIn: %d вакансий итого, 429 за описания: %d", len(jobs),
-                    self._n429 - n429_search)
+    def _ready_jobs(self) -> list[Job]:
+        """Все карточки пула с описанием. Из пула их убирает планировщик после
+        вердикта (scheduler._prune_li_pool) — упавший AI-батч не теряет вакансию."""
+        from ... import storage
+        jobs = [Job(
+            id=f"li_{c['id']}",
+            title=c["title"],
+            company=c["company"],
+            description=clean_description(desc),
+            url=c["url"],
+            source="linkedin.com",
+            location=c["location"],
+            is_remote=detect_remote(location=c["location"], description=desc),
+        ) for c, desc in storage.li_pool_ready()]
+        logger.info("LinkedIn: %d вакансий итого", len(jobs))
         return jobs
+
+    def harvest(self, minutes: float) -> int:
+        """Почасовая докачка описаний из пула между прогонами, без поиска."""
+        if not self.enabled:
+            return 0
+        self._deadline = time.monotonic() + minutes * 60
+        self._deadline_logged = False
+        self._n429 = 0
+        self._strikes = 0
+        return self._fetch_pool()
 
 
 if __name__ == "__main__":

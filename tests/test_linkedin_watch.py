@@ -8,7 +8,18 @@
 принимается — нужен ещё geoId. С `geoId=92000000` фильтр отдаёт ровно вакансии
 указанной компании.
 """
+import pytest
+
+from src import storage
 from src.parsers.web.linkedin import _WORLDWIDE_GEO, LinkedInParser
+
+
+@pytest.fixture()
+def db(tmp_path, monkeypatch):
+    """parse() пишет в пул li_pool — не в боевую базу."""
+    monkeypatch.setattr(storage, "DB_PATH", tmp_path / "test.db")
+    storage.init_db()
+    return storage
 
 CARD = (
     '<ul><li>'
@@ -59,7 +70,7 @@ class TestCompanyCards:
 
 
 class TestWatchOrdering:
-    def test_watched_companies_are_queued_first(self, monkeypatch):
+    def test_watched_companies_are_queued_first(self, monkeypatch, db):
         """Описания качаются в порядке вставки и обрываются на max_descriptions.
         Если watch-компания окажется в хвосте, её вакансия не доедет до скоринга."""
         p = _parser()
@@ -73,6 +84,7 @@ class TestWatchOrdering:
         p.max_descriptions = 0        # описания не качаем — проверяем только порядок
         p._strikes = 0
         p.watch_companies = [{"name": "AMLBot", "id": "64276802"}]
+        p.geos_per_run, p.pool_max_age_days = 0, 7
 
         order = []
         monkeypatch.setattr(p, "_company_cards",
@@ -82,7 +94,7 @@ class TestWatchOrdering:
         p.parse()
         assert order and order[0] == "watch"
 
-    def test_watch_alone_is_enough_to_run(self, monkeypatch):
+    def test_watch_alone_is_enough_to_run(self, monkeypatch, db):
         p = _parser()
         p.enabled = True
         p.queries, p.geos = [], []
@@ -90,6 +102,7 @@ class TestWatchOrdering:
         p.max_minutes = 45
         p.max_descriptions, p._strikes = 0, 0
         p.watch_companies = [{"name": "AMLBot", "id": "64276802"}]
+        p.geos_per_run, p.pool_max_age_days = 0, 7
         called = []
         monkeypatch.setattr(p, "_company_cards",
                             lambda cid, s: called.append(cid) or [])

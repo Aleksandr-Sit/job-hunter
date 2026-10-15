@@ -62,6 +62,26 @@ def init_db() -> None:
                 added_at TEXT NOT NULL
             );
 
+            -- Пул карточек LinkedIn (14.10.2026). Поиск отдаёт ~1700 карточек за
+            -- прогон, описание — отдельный запрос, и за 45 минут стадии успевали
+            -- 15–19 описаний: остальные карточки выбрасывались. Здесь карточка
+            -- ждёт описания (его докачивают прогон и почасовой сбор), а с
+            -- описанием — вердикта. id — без префикса li_.
+            CREATE TABLE IF NOT EXISTS li_pool (
+                id TEXT PRIMARY KEY,
+                card_json TEXT NOT NULL,
+                tier TEXT NOT NULL,
+                description TEXT,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                added_at TEXT NOT NULL
+            );
+
+            -- Когда страна LinkedIn искалась последней: прогон берёт самые давние.
+            CREATE TABLE IF NOT EXISTS li_geo_state (
+                geo TEXT PRIMARY KEY,
+                searched_at TEXT NOT NULL
+            );
+
             -- Ключи near-дубликатов ОТПРАВЛЕННЫХ карточек (29.09.2026). Дедуп по
             -- ключу работал только внутри прогона: копия из другого города hh или
             -- репост в другом TG-канале в следующем прогоне приходила второй
@@ -298,6 +318,103 @@ def pool_prune_seen(prefilter_version: Optional[str] = None) -> int:
 def pool_size() -> int:
     with get_conn() as conn:
         return conn.execute("SELECT COUNT(*) c FROM hh_pool").fetchone()["c"]
+
+
+# ── Пул карточек LinkedIn ─────────────────────────────────────────────────────
+
+def li_pool_add(cards: list[dict], tiers: dict[str, str]) -> int:
+    """Кладёт карточки в пул (tiers: id -> high/low); лежащие не трогает."""
+    if not cards:
+        return 0
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        before = conn.total_changes
+        conn.executemany(
+            "INSERT OR IGNORE INTO li_pool (id, card_json, tier, added_at) VALUES (?,?,?,?)",
+            [(c["id"], json.dumps(c, ensure_ascii=False), tiers[c["id"]], now)
+             for c in cards],
+        )
+        return conn.total_changes - before
+
+
+def li_pool_pending(max_age_days: int = 7) -> tuple[list[dict], int]:
+    """Карточки без описания (с полем tier) + число выброшенных по сроку.
+
+    Срок — как окно поиска LinkedIn (неделя): старше вакансия обычно закрыта."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=max_age_days)).isoformat()
+    with get_conn() as conn:
+        expired = conn.execute("DELETE FROM li_pool WHERE added_at < ?", (cutoff,)).rowcount
+        rows = conn.execute(
+            "SELECT card_json, tier FROM li_pool WHERE description IS NULL "
+            "ORDER BY added_at").fetchall()
+    return [{**json.loads(r["card_json"]), "tier": r["tier"]} for r in rows], expired
+
+
+def li_pool_set_description(card_id: str, description: str) -> None:
+    with get_conn() as conn:
+        conn.execute("UPDATE li_pool SET description = ? WHERE id = ?",
+                     (description, card_id))
+
+
+def li_pool_fail(card_id: str, max_attempts: int = 3) -> None:
+    """Описание не скачалось. После max_attempts карточка уходит из пула:
+    пустой ответ бывает и у закрытой вакансии, и у серии 429 — различить
+    их по телу нельзя, поэтому даём несколько попыток в разные часы."""
+    with get_conn() as conn:
+        conn.execute("UPDATE li_pool SET attempts = attempts + 1 WHERE id = ?", (card_id,))
+        conn.execute("DELETE FROM li_pool WHERE id = ? AND attempts >= ?",
+                     (card_id, max_attempts))
+
+
+def li_pool_ready() -> list[tuple[dict, str]]:
+    """Карточки с описанием, ждущие вердикта: [(card, description)]."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT card_json, description FROM li_pool WHERE description IS NOT NULL"
+        ).fetchall()
+    return [(json.loads(r["card_json"]), r["description"]) for r in rows]
+
+
+def li_pool_prune_seen(prefilter_version: Optional[str] = None) -> int:
+    """Убирает из пула всё, что получило вердикт под текущим отпечатком."""
+    with get_conn() as conn:
+        ids = [r["id"] for r in conn.execute("SELECT id FROM li_pool").fetchall()]
+    seen = is_seen_batch([f"li_{i}" for i in ids], prefilter_version=prefilter_version)
+    if not seen:
+        return 0
+    with get_conn() as conn:
+        conn.executemany("DELETE FROM li_pool WHERE id = ?", [(s[3:],) for s in seen])
+    return len(seen)
+
+
+def li_pool_stats() -> dict:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT tier, description IS NOT NULL ready, COUNT(*) c FROM li_pool "
+            "GROUP BY tier, ready").fetchall()
+    out = {"high": 0, "low": 0, "ready": 0}
+    for r in rows:
+        if r["ready"]:
+            out["ready"] += r["c"]
+        else:
+            out[r["tier"]] = out.get(r["tier"], 0) + r["c"]
+    return out
+
+
+def li_geo_oldest(names: list[str], n: int) -> list[str]:
+    """n стран, которые искались давнее всех (ни разу — первыми, по порядку конфига)."""
+    with get_conn() as conn:
+        last = {r["geo"]: r["searched_at"] for r in
+                conn.execute("SELECT geo, searched_at FROM li_geo_state").fetchall()}
+    order = sorted(range(len(names)), key=lambda i: (last.get(names[i], ""), i))
+    return [names[i] for i in order[:n]]
+
+
+def li_geo_mark(name: str) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        conn.execute("INSERT OR REPLACE INTO li_geo_state (geo, searched_at) VALUES (?,?)",
+                     (name, now))
 
 
 # ── Трекер откликов ───────────────────────────────────────────────────────────

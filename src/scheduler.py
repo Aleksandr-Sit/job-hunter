@@ -340,12 +340,43 @@ def harvest_hh() -> None:
         _RUN_LOCK.release()
 
 
+def _prune_li_pool() -> None:
+    """Убирает из пула LinkedIn карточки, получившие вердикт."""
+    try:
+        removed = storage.li_pool_prune_seen(prefilter_version=_prefilter_version())
+        st = storage.li_pool_stats()
+        logger.info("LinkedIn пул: разобрано %d; ждут описания high %d / low %d, "
+                    "с описанием ждут вердикта %d", removed, st["high"], st["low"], st["ready"])
+    except Exception:
+        logger.exception("LinkedIn пул: не удалось убрать разобранные вакансии")
+
+
+def harvest_linkedin() -> None:
+    """Почасовая докачка описаний LinkedIn в пул между прогонами, без AI и поиска.
+
+    Описания качаются только из пула (карточки кладёт основной прогон), поэтому
+    это ~0 поисковых запросов — тех, что LinkedIn режет 429 жёстче всего."""
+    if not _RUN_LOCK.acquire(blocking=False):
+        logger.info("LinkedIn докачка пропущена: идёт основной прогон")
+        return
+    try:
+        from .parsers.web.linkedin import LinkedInParser
+        storage.init_db()
+        minutes = _load_config().get("scheduler", {}).get("li_harvest_minutes", 15)
+        LinkedInParser().harvest(minutes)
+    except Exception:
+        logger.exception("LinkedIn докачка между прогонами упала")
+    finally:
+        _RUN_LOCK.release()
+
+
 def run_once() -> None:
     with _RUN_LOCK:
         try:
             _run_pipeline()
         finally:
             _prune_hh_pool()
+            _prune_li_pool()
 
 
 def _run_pipeline() -> None:
@@ -554,6 +585,13 @@ def main() -> None:
         scheduler.add_job(harvest_hh, "cron", minute=h[0], hour=h[1],
                           day=h[2], month=h[3], day_of_week=h[4])
         logger.info("HH сбор между прогонами (UTC): %s", harvest_expr)
+
+    li_expr = sched_cfg.get("li_harvest_cron")
+    if li_expr:
+        h = li_expr.split()
+        scheduler.add_job(harvest_linkedin, "cron", minute=h[0], hour=h[1],
+                          day=h[2], month=h[3], day_of_week=h[4])
+        logger.info("LinkedIn докачка описаний (UTC): %s", li_expr)
 
     # Первый запуск сразу. Под защитой: без неё падение стартового прогона роняло
     # контейнер целиком, а `restart: unless-stopped` поднимал его заново — карусель
