@@ -69,14 +69,14 @@ class TestRescueOrder:
 class TestRescueDeferred:
     def test_tail_over_limit_is_deferred_not_reviewed(self, no_network):
         jobs = [_job(f"j{i}", hours_ago=i) for i in range(5)]
-        recovered, deferred = scheduler._rescue_hh_rejects(jobs, limit=3)
+        recovered, deferred, _ = scheduler._rescue_hh_rejects(jobs, limit=3)
         assert recovered == []
         assert [j.id for j in deferred] == ["j3", "j4"]
         assert no_network["enriched_ids"] == ["j0", "j1", "j2"]
 
     def test_watched_reviewed_before_limit_cuts(self, no_network):
         jobs = [_job(f"j{i}", hours_ago=i) for i in range(3)] + [_job("w", 99, watch=True)]
-        _, deferred = scheduler._rescue_hh_rejects(jobs, limit=2)
+        _, deferred, _ = scheduler._rescue_hh_rejects(jobs, limit=2)
         assert "w" in no_network["enriched_ids"]
         assert {j.id for j in deferred} == {"j1", "j2"}
 
@@ -84,25 +84,25 @@ class TestRescueDeferred:
         no_network["healthy"] = False
         no_network["fail"] = {"j0", "j2"}
         jobs = [_job(f"j{i}", hours_ago=i) for i in range(4)]
-        _, deferred = scheduler._rescue_hh_rejects(jobs, limit=3)
+        _, deferred, _ = scheduler._rescue_hh_rejects(jobs, limit=3)
         assert {j.id for j in deferred} == {"j0", "j2", "j3"}
 
     def test_single_failure_in_healthy_run_is_not_deferred(self, no_network):
         no_network["fail"] = {"j1"}
         jobs = [_job(f"j{i}", hours_ago=i) for i in range(3)]
-        _, deferred = scheduler._rescue_hh_rejects(jobs, limit=3)
+        _, deferred, _ = scheduler._rescue_hh_rejects(jobs, limit=3)
         assert deferred == []
 
     def test_recovered_returned(self, no_network, monkeypatch):
         monkeypatch.setattr(scheduler, "score_job", lambda j: {"best": {
             "passed_gate": True, "recommend": True, "role": "crypto_ops",
             "reasons": ["ok"]}})
-        recovered, deferred = scheduler._rescue_hh_rejects([_job("a")], limit=5)
+        recovered, deferred, _ = scheduler._rescue_hh_rejects([_job("a")], limit=5)
         assert [j.id for j in recovered] == ["a"] and deferred == []
         assert recovered[0].match_role == "crypto_ops"
 
     def test_empty(self, no_network):
-        assert scheduler._rescue_hh_rejects([], limit=5) == ([], [])
+        assert scheduler._rescue_hh_rejects([], limit=5) == ([], [], [])
 
 
 class TestWatchFlag:
