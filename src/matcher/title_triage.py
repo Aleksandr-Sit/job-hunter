@@ -8,8 +8,15 @@
 Отдельный модуль, а не функция в pre_filter.py: версия предфильтра — хеш его
 исходника, и любая строка там заставила бы бота пересмотреть все прошлые отказы.
 """
-from .pre_filter import (CRITERIA, _RU_MENTION, _SOFT_GATE_REASONS,
-                         _blocked_employer, _hits, _n, passes_hard_gates)
+from .pre_filter import (
+    _RU_MENTION,
+    _SOFT_GATE_REASONS,
+    CRITERIA,
+    _blocked_employer,
+    _hits,
+    _n,
+    passes_hard_gates,
+)
 
 
 def title_triage(title: str, company: str | None = None) -> str:
