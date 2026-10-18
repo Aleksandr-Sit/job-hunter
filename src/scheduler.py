@@ -6,6 +6,7 @@ import logging
 import socket
 import threading
 import time
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -20,6 +21,7 @@ from .bot.notifier import send_daily_summary, send_jobs_batch, send_text
 from .log_redact import RedactingFilter
 from .matcher.cerebras_matcher import match_jobs
 from .matcher.pre_filter import (
+    _HOME_CITY,
     _prefilter_version,
     dedupe_jobs,
     is_soft_reject,
@@ -27,6 +29,7 @@ from .matcher.pre_filter import (
     score_job,
     split_duplicates,
 )
+from .matcher.title_triage import title_triage
 from .models import Job
 from .parsers.normalize import clean_job_fields
 
@@ -154,22 +157,86 @@ def _enrich_hh_and_rescore(jobs: list, limit: int = 120) -> list:
     return kept
 
 
-def _rescue_order(jobs: list) -> list:
-    """Порядок очереди пересмотра: слежка за работодателями → свежие → старые.
+def _rescue_order(jobs: list, low_queries: frozenset = frozenset()) -> list:
+    """Порядок очереди пересмотра: слежка → обычные запросы → запросы с
+    `priority: low`; внутри — заголовки с ролевым/доменным словом (`title_triage`
+    = high) раньше остальных; дальше свежие → старые.
 
     Выдача HH идёт в порядке запросов, слежка — в самом конце, поэтому потолок
-    пересмотра срезал именно её (ревизия 17.09.2026). Свежесть вторым ключом:
+    пересмотра срезал именно её (ревизия 17.09.2026). Свежесть последним ключом:
     не влезшие в потолок остаются в очереди (см. `_rescue_hh_rejects`), и
     порядок по дате стабилен — старое ждёт свободного места, а не вытесняет
     свежее по кругу. Без даты — в конец.
+
+    Классы добавлены 18.10.2026. Очередь была общей, и вакансии узких запросов
+    («BDM (High-Risk / Payment)» по «P2P менеджер», «Менеджер по сопровождению
+    партнёров» МОНЕТА) умирали по сроку наравне с «Продавец @ Магнит». История hh
+    с 25.09: high — 633 до AI → 372 ≥55, low — 208 → 48; в low есть живые
+    («Промпт инженер» 85), поэтому low идёт в конец, а не в отсев. Вакансия без
+    метки запроса (лежала в пуле до 18.10) считается найденной обычным запросом.
     """
+    tiers: dict = {}
+
+    def tier(j):
+        k = (j.title or "", j.company or "")
+        if k not in tiers:
+            tiers[k] = title_triage(*k)
+        return tiers[k]
+
     def key(j):
         ts = j.published_at.timestamp() if j.published_at else float("-inf")
-        return (not j.raw.get("employer_watch"), -ts)
+        found_by = j.raw.get("hh_queries") or []
+        low = bool(found_by) and all(q in low_queries for q in found_by)
+        return (not j.raw.get("employer_watch"), low, tier(j) != "high", -ts)
     return sorted(jobs, key=key)
 
 
-def _rescue_hh_rejects(jobs: list, limit: int = 220) -> tuple[list, list]:
+def _group_copies(queue: list) -> tuple[list, dict]:
+    """Одна вакансия на ключ «компания + должность», копии — к представителю.
+
+    hh публикует вакансию в каждом городе отдельно, и в пуле 18.10.2026 из 20 546
+    было 4 179 копий («Магнит | продавец» — 723). Текст у копий один, поэтому
+    пересматривать каждую — тратить потолок на одно и то же. Представитель — первая
+    копия в порядке очереди, но самарская важнее: офис в Самаре без штрафа, в другом
+    городе — минус баллы, и пройти может только она. Порядок групп — порядок их
+    первых членов в очереди."""
+    groups: dict[str, list] = {}
+    for j in queue:
+        groups.setdefault(job_dedupe_key(j), []).append(j)
+    reps, copies = [], {}
+    for members in groups.values():
+        rep = next((j for j in members if _HOME_CITY.search((j.location or "").lower())),
+                   members[0])
+        reps.append(rep)
+        copies[rep.id] = [j for j in members if j is not rep]
+    return reps, copies
+
+
+def _low_priority_queries(cfg: dict) -> frozenset:
+    from .parsers.hh_parser import query_label
+    entries = (cfg.get("parsers") or {}).get("hh", {}).get("search_queries") or []
+    return frozenset(query_label(e) for e in entries
+                     if isinstance(e, dict) and e.get("priority") == "low")
+
+
+def _log_queue_by_query(jobs: list, low_queries: frozenset) -> None:
+    """Кто забивает очередь — по меткам запросов (вакансия, найденная двумя
+    запросами, считается у обоих). До меток (18.10.2026) это восстанавливали
+    живым замером RSS по всем 85 запросам."""
+    by_query: Counter = Counter()
+    untagged = 0
+    for j in jobs:
+        found_by = j.raw.get("hh_queries") or []
+        by_query.update(found_by)
+        if not found_by and not j.raw.get("employer_watch"):
+            untagged += 1
+    top = ", ".join(f"«{q}»{' (низк.)' if q in low_queries else ''} {n}"
+                    for q, n in by_query.most_common(8))
+    logger.info("HH очередь по запросам: %s; без метки %d", top or "—", untagged)
+
+
+def _rescue_hh_rejects(jobs: list, limit: int = 220,
+                       low_queries: frozenset = frozenset()) -> tuple[list, list, list]:
     """Пересматривает отказы HH, вынесенные по обрезанному описанию.
 
     Зачем. RSS отдаёт медианно 126 символов, то есть решение «нет ролевых слов /
@@ -186,17 +253,22 @@ def _rescue_hh_rejects(jobs: list, limit: int = 220) -> tuple[list, list]:
     гражданству полным описанием не переворачивается, качать его — впустую тратить
     ~0.8 МБ и 0.87 с на вакансию.
 
-    Возвращает `(recovered, deferred)`. `deferred` — не пересмотренные: хвост за
-    потолком и, если hh.ru не отдал описания (антибот), цели без описания. Их НЕ
-    помечают увиденными — иначе они не вернулись бы до следующей смены критериев.
-    Потолок упирался в каждом прогоне (лог 14–17.09.2026: «219 из 220»).
+    Возвращает `(recovered, deferred, copies)`. `deferred` — не пересмотренные:
+    хвост за потолком и, если hh.ru не отдал описания (антибот), цели без описания.
+    Их НЕ помечают увиденными — иначе они не вернулись бы до следующей смены
+    критериев. Потолок упирался в каждом прогоне (лог 14–17.09.2026: «219 из 220»).
+    Пересматривается одна копия вакансии (`_group_copies`); копии отложенной
+    откладываются вместе с ней, копии отсеянной получают провизорный отказ вместе с
+    ней, а `copies` — пары (копия, представитель) вернувшихся в отбор: их помечают
+    как near-дубликат, так же как `split_duplicates` помечает копии прошедших.
     """
     if not jobs:
-        return [], []
+        return [], [], []
     from .parsers.hh_enrich import enrich
 
-    queue = _rescue_order(jobs)
-    targets, deferred = queue[:limit], queue[limit:]
+    queue = _rescue_order(jobs, low_queries)
+    reps, copies_of = _group_copies(queue)
+    targets, deferred = reps[:limit], reps[limit:]
     before = {j.id: j.description for j in targets}
     stats = enrich(targets, limit=limit)
     watched = sum(1 for j in jobs if j.raw.get("employer_watch"))
@@ -216,13 +288,17 @@ def _rescue_hh_rejects(jobs: list, limit: int = 220) -> tuple[list, list]:
             j.match_reasons = best["reasons"]
             recovered.append(j)
 
+    deferred = deferred + [c for r in deferred for c in copies_of[r.id]]
+    copies = [(c, r) for r in recovered for c in copies_of[r.id]]
     logger.info("HH пересмотр отказов: в очереди %d (слежка %d), пересмотрено %d "
-                "(дообогащено %d), отложено %d, вернулось в отбор %d",
+                "(дообогащено %d), отложено %d, вернулось в отбор %d, "
+                "копий без пересмотра %d",
                 len(jobs), watched, len(targets), stats.enriched, len(deferred),
-                len(recovered))
+                len(recovered), len(jobs) - len(reps))
     for j in recovered[:5]:
         logger.info("  возвращена [%s] %s", j.match_role, j.title[:65])
-    return recovered, deferred
+    _log_queue_by_query(jobs, low_queries)
+    return recovered, deferred, copies
 
 
 def _warn_if_provider_switched() -> None:
@@ -255,6 +331,14 @@ def _merge_hh_pool(all_jobs: list, max_age_days: int) -> list:
     pool_jobs, expired = storage.pool_load(max_age_days=max_age_days)
     fresh_ids = {j.id for j in all_jobs}
     from_pool = [j for j in pool_jobs if j.id not in fresh_ids]
+    # Метки запросов пульной версии не теряем: узкий запрос мог найти вакансию
+    # раньше и уже не отдавать её в окне, а приоритет очереди считается по меткам.
+    pooled = {j.id: j for j in pool_jobs if j.raw.get("hh_queries")}
+    for j in all_jobs:
+        old = pooled.get(j.id)
+        if old is not None:
+            found_by = j.raw.setdefault("hh_queries", [])
+            found_by += [q for q in old.raw["hh_queries"] if q not in found_by]
     if pool_jobs or expired:
         logger.info("HH пул: в пуле %d, добавлено к выдаче %d, выброшено по сроку %d",
                     len(pool_jobs), len(from_pool), expired)
@@ -474,8 +558,11 @@ def _run_pipeline() -> None:
         _hh_cfg = cfg.get("hh_enrich", {})
         new_jobs = _enrich_hh_and_rescore(new_jobs, limit=_hh_cfg.get("limit", 120))
         # ...и только потом пересматриваем отказы: дедуп уже прошёл, копии не качаем.
-        rescued, deferred = _rescue_hh_rejects(hh_retry, limit=_hh_cfg.get("retry_limit", 220))
+        rescued, deferred, copies = _rescue_hh_rejects(
+            hh_retry, limit=_hh_cfg.get("retry_limit", 220),
+            low_queries=_low_priority_queries(cfg))
         deferred_ids = {j.id for j in deferred}
+        dup_ids |= _mark_run_duplicates(copies)
         if rescued:
             new_jobs, dropped = split_duplicates(new_jobs + rescued)
             dup_ids |= _mark_run_duplicates(dropped)
