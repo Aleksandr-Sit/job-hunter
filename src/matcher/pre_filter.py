@@ -994,6 +994,11 @@ def passes_hard_gates(title: str, text: str, role_key: str) -> tuple[bool, list[
     for t in CRITERIA.get("global_title_exclude", []):
         if _matches(t, _n(title)):
             return False, [f"title-exclude: '{t}'"]
+    # ...и внутри одной роли: «онлайн-школа» режет продажи курсов, но не
+    # «Технический специалист GetCourse» в AI-автоматизации
+    for t in role.get("title_exclude", []):
+        if _matches(t, _n(title)):
+            return False, [f"role-title-exclude: '{t}'"]
 
     extra_reason = _extra_hard_gates(title, text, role_key)
     if extra_reason:
