@@ -128,15 +128,65 @@ def _format_note(html: bytes) -> str:
     return f"{WORK_FORMAT_LABEL} {', '.join(f.decode() for f in formats)}\n"
 
 
-def _fetch(url: str, session: requests.Session | None = None) -> tuple[str, int]:
-    """(описание, сколько байт скачано). Пустая строка — не получилось.
+# Зарплата со страницы — 18.10.2026. RSS-версия вакансии лежит в пуле до 14 дней
+# (`storage.pool_add` — INSERT OR IGNORE, первая увиденная), и если работодатель
+# снизил сумму, бот слал старую: Ozon Банк «до 90 000» в карточке при «до 75 000»
+# на странице. Страница — актуальная, и только она знает gross/net. Поле одно на
+# вакансию (на странице встречается дважды, оба раза её же).
+_COMPENSATION = re.compile(rb'"compensation":\{([^{}]*)\}')
+_CURRENCY = {"RUR": "RUB", "RUB": "RUB", "USD": "USD", "EUR": "EUR", "KZT": "KZT"}
+SALARY_LABEL = "Зарплата (hh):"
+# Строка дохода из RSS-выжимки: её заменяем, иначе AI видит обе суммы
+_RSS_SALARY_LINE = re.compile(r"^[^\n]*(?:уровень[^\n]*дохода|зарплата:)[^\n]*$",
+                              re.IGNORECASE | re.MULTILINE)
+
+
+def _compensation(html: bytes) -> dict | None:
+    """{"from", "to", "currency", "gross"} или None, если зарплата не указана."""
+    html = html.replace(b"&#34;", b'"').replace(b"&quot;", b'"')
+    m = _COMPENSATION.search(html)
+    if not m:
+        return None
+    body = m.group(1).decode("utf-8", "replace")
+
+    def num(key):
+        v = re.search(rf'"{key}":(\d+)', body)
+        return int(v.group(1)) if v else None
+
+    lo, hi = num("from"), num("to")
+    if not (lo or hi):
+        return None
+    cur = re.search(r'"currencyCode":"([A-Z]+)"', body)
+    gross = re.search(r'"gross":(true|false)', body)
+    return {"from": lo, "to": hi,
+            "currency": _CURRENCY.get(cur.group(1), cur.group(1)) if cur else "RUB",
+            "gross": None if not gross else gross.group(1) == "true"}
+
+
+def _apply_compensation(job: Job, comp: dict) -> None:
+    """Поля зарплаты и строка дохода в описании — по странице, а не по RSS."""
+    from ..models import salary_range
+    job.salary_min, job.salary_max = comp["from"], comp["to"]
+    job.salary_currency = comp["currency"]
+    if comp["gross"] is not None:
+        job.raw["salary_gross"] = comp["gross"]
+    tax = {True: ", до вычета налогов", False: ", на руки"}.get(comp["gross"], "")
+    line = f"{SALARY_LABEL} {salary_range(comp['from'], comp['to'], sep=' ')} {comp['currency']}{tax}"
+    desc, n = _RSS_SALARY_LINE.subn(line, job.description or "", count=1)
+    job.description = desc if n else f"{line}\n{desc}"
+
+
+def _fetch(url: str, session: requests.Session | None = None
+           ) -> tuple[str, int, dict | None]:
+    """(описание, сколько байт скачано, зарплата со страницы). Пустая строка —
+    не получилось.
 
     Никогда не бросает: отказ HH не должен ронять прогон — бот продолжит
     работать на короткой выжимке, как работал до этого.
     """
     m = _VACANCY_ID.search(url or "")
     if not m:
-        return "", 0
+        return "", 0, None
     sess = session or requests.Session()
     try:
         r = sess.get(f"https://hh.ru/vacancy/{m.group(1)}",
@@ -144,12 +194,14 @@ def _fetch(url: str, session: requests.Session | None = None) -> tuple[str, int]
         size = len(r.content)
         if r.status_code != 200:
             logger.debug("HH enrich: %s -> HTTP %s", m.group(1), r.status_code)
-            return "", size
+            return "", size, None
         text = _extract(r.content)
-        return (_format_note(r.content) + text if text else ""), size
+        if not text:
+            return "", size, None
+        return _format_note(r.content) + text, size, _compensation(r.content)
     except Exception as e:
         logger.debug("HH enrich: %s -> %s", m.group(1), str(e)[:100])
-        return "", 0
+        return "", 0, None
 
 
 def fetch_description(url: str, session: requests.Session | None = None) -> str:
@@ -173,13 +225,15 @@ def enrich(jobs: Iterable[Job], limit: int = 120) -> EnrichStats:
         if i:
             time.sleep(_PAUSE)
         stats.attempted += 1
-        full, size = _fetch(job.url, session)
+        full, size, *page = _fetch(job.url, session)
         stats.downloaded += size
         if not full:
             stats.failed += 1
             continue
         stats.chars += len(full)
-        # Выжимку сохраняем: в ней регион и зарплата, которых нет в теле описания.
+        if page and page[0]:
+            _apply_compensation(job, page[0])
+        # Выжимку сохраняем: в ней регион (и зарплата, если со страницы не взялась).
         job.description = f"{job.description}\n{full}"[:MAX_DESCRIPTION_CHARS]
         stats.enriched += 1
 

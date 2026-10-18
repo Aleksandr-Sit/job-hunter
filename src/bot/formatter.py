@@ -1,7 +1,7 @@
 """Форматирует вакансию + результат матчинга в Telegram HTML-сообщение."""
 import re
 
-from ..models import Job, MatchResult
+from ..models import Job, MatchResult, salary_range
 
 _DIV = "─" * 22
 
@@ -30,11 +30,11 @@ def _meta_line(job: Job) -> str:
         parts.append("Remote")
     if job.location and job.location.lower() not in ("remote", "anywhere", ""):
         parts.append(_esc(job.location))
-    if job.salary_min or job.salary_max:
-        lo = f"{job.salary_min:,}" if job.salary_min else ""
-        hi = f"{job.salary_max:,}" if job.salary_max else ""
-        rng = f"{lo}–{hi}" if lo and hi else lo or hi
-        parts.append(f"💰 {rng} {job.salary_currency}")
+    rng = salary_range(job.salary_min, job.salary_max)
+    if rng:
+        # gross/net знает только страница hh (hh_enrich._compensation)
+        tax = {True: " до вычета", False: " на руки"}.get(job.raw.get("salary_gross"), "")
+        parts.append(f"💰 {rng} {job.salary_currency}{tax}")
     return "  ·  ".join(parts)
 
 
