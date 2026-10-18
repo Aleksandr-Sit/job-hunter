@@ -29,6 +29,21 @@ def _sample_description(text: str) -> str:
             f"{text[-_AI_TAIL_CHARS:]}")
 
 
+def salary_range(lo: Optional[int], hi: Optional[int], sep: str = ",") -> str:
+    """«от 90 000», «до 75 000», «60 000–90 000» или пусто. Одна граница без
+    предлога читалась как фикс: «до 90 000» в карточке выглядело как «90 000»
+    (Ozon Банк, 18.10.2026), а AI получал «Salary: 90000–» и писал «от 90 000»."""
+    def f(n):
+        return f"{n:,}".replace(",", sep)
+    if lo and hi:
+        return f"{f(lo)}–{f(hi)}"
+    if lo:
+        return f"от {f(lo)}"
+    if hi:
+        return f"до {f(hi)}"
+    return ""
+
+
 @dataclass
 class Job:
     id: str
@@ -49,11 +64,8 @@ class Job:
     match_reasons: list[str] = field(default_factory=list)
 
     def to_text(self) -> str:
-        salary = ""
-        if self.salary_min or self.salary_max:
-            lo = self.salary_min or ""
-            hi = self.salary_max or ""
-            salary = f"Salary: {lo}–{hi} {self.salary_currency}\n"
+        rng = salary_range(self.salary_min, self.salary_max, sep="")
+        salary = f"Salary: {rng} {self.salary_currency}\n" if rng else ""
 
         location = f"Location: {self.location}\n" if self.location else ""
         remote = "Remote: yes\n" if self.is_remote else ""

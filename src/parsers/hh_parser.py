@@ -297,11 +297,19 @@ class HHParser(BaseParser):
 
     def _parse_salary(self, text: str) -> tuple:
         # \xa0 — неразрывный пробел в числах на HH.ru (например "3\xa0000")
-        text = text.replace("\xa0", " ")
+        text = text.replace("\xa0", " ").replace(" ", " ")
         nums = re.findall(r"[\d\s]+", text)
         nums = [int(n.replace(" ", "")) for n in nums if n.strip() and int(n.replace(" ", "")) > 100]
-        sal_min = nums[0] if nums else None
-        sal_max = nums[1] if len(nums) > 1 else None
+        # «до 90 000» — потолок, а не минимум: раньше первое число всегда шло в
+        # min, и карточка печатала «90 000» как фикс (Ozon Банк, 18.10.2026)
+        low = text.lower()
+        has_from = re.search(r"\bот\s*\d", low) is not None
+        has_to = re.search(r"\bдо\s*\d", low) is not None
+        if has_to and not has_from:
+            sal_min, sal_max = None, (nums[0] if nums else None)
+        else:
+            sal_min = nums[0] if nums else None
+            sal_max = nums[1] if len(nums) > 1 else None
 
         text_low = text.lower()
         if "$" in text or "usd" in text_low:
