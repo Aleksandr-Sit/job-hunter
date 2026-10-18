@@ -22,15 +22,15 @@ def build_parsers():
     """Тот же состав, что у боевого планировщика (src/parsers/registry.py).
     Раньше список дублировался здесь и разъезжался со scheduler — Habr выпадал
     из всех замеров воронки (HEALTH_AUDIT F11)."""
+    import tempfile
+
+    import src.matcher.title_triage as triage
+    from src import storage
     from src.parsers.registry import build_parsers as _build
 
     # LinkedIn с 15.10.2026 работает через базу: пул li_pool и ротация стран
     # li_geo_state. Дамп в боевом контейнере писал бы в БОЕВУЮ базу — забил бы пул
     # уже оценёнными карточками и сбил ротацию. Поэтому — отдельная временная БД.
-    import tempfile
-
-    from src import storage
-    import src.matcher.title_triage as triage
     storage.DB_PATH = Path(tempfile.mkdtemp()) / "dump.db"
     storage.init_db()
     # Батч — снимок ВСЕГО потока: карточки, которые бот режет по заголовку (drop),
