@@ -607,7 +607,7 @@ roles:
       - "sales"
       - "account executive"
       - "business development"
-      - "cold calling"
+      # «cold calling» — с 18.10.2026 гейт _cold_outreach (pre_filter.py)
       - "phone support"
     # Лидерские термины — только по ЗАГОЛОВКУ: «you will lead», «reporting to
     # the Team Lead» в описании — не лидерская роль (docs/PREFILTER_AUDIT.md §5.2)
@@ -753,7 +753,7 @@ roles:
       - "account executive"
       - "business development"
       - "outbound"
-      - "cold calling"
+      # «cold calling» — с 18.10.2026 гейт _cold_outreach (pre_filter.py)
       - "quota"
       - "upsell"
       - "phone support"
@@ -1072,7 +1072,7 @@ roles:
       - "travel rule"
     keywords_penalize:
       - "юрист"          # правовые роли требуют юр. образования
-      - "cold calling"
+      # «cold calling» — с 18.10.2026 гейт _cold_outreach (pre_filter.py)
       - "продаж"
       # A/B 30.07: в выдачу лезли Institutional Sales Associate и Regional Sales
       # Manager — у них в описании есть «compliance», и роль матчилась по нему.
@@ -1228,7 +1228,7 @@ roles:
       - "платеж*"
       - "документаци*"
     keywords_penalize:
-      - "холодные звонки"
+      # «холодные звонки» — с 18.10.2026 гейт _cold_outreach (pre_filter.py)
       - "колл-центр"
       - "call center"
       - "продаж"
@@ -1416,18 +1416,15 @@ roles:
       - "действующих клиентов"
       - "действующие клиенты"
     keywords_penalize:
-      # Холодные продажи — прямой стоп кандидата (и голосовой барьер)
-      - "холодные звонки"
-      - "холодных звонков"
-      - "холодный обзвон"
-      - "холодная база"
-      - "cold calling"
-      - "cold calls"
+      # Холодные звонки, «активный поиск клиентов», план звонков — с 18.10.2026
+      # жёсткий гейт _cold_outreach в pre_filter.py (все роли, с отрицаниями).
+      # Здесь они срабатывали и на «без холодных звонков»: −12 за плюс вакансии.
+      # «поиск новых клиентов» без «активный/самостоятельный» — строка в списке
+      # обязанностей аккаунт-менеджера, поэтому остаётся мягким штрафом.
       - "колл-центр"
       - "колл центр"
       - "call center"
       - "call-центр"
-      - "активный поиск клиентов"
       - "поиск новых клиентов"
       - "личные встречи"
       - "разъездн*"
