@@ -130,11 +130,17 @@ class TestConfig:
         from src.parsers.hh_parser import _CONFIG
         return yaml.safe_load(_CONFIG.read_text(encoding="utf-8"))["parsers"]["hh"]
 
+    @classmethod
+    def _labels(cls):
+        # Запрос — строка или словарь {text, field, priority} (18.10.2026).
+        from src.parsers.hh_parser import query_label
+        return [query_label(q).lower().strip() for q in cls._hh()["search_queries"]]
+
     def test_sanctioned_exchange_not_tracked(self):
-        assert "abcex" not in {q.lower() for q in self._hh()["search_queries"]}
+        assert not any("abcex" in q for q in self._labels())
 
     def test_queries_unique(self):
-        qs = [q.lower().strip() for q in self._hh()["search_queries"]]
+        qs = self._labels()
         dupes = {q for q in qs if qs.count(q) > 1}
         assert not dupes, dupes
 

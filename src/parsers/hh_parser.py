@@ -48,6 +48,37 @@ def _norm_company(name: str | None) -> str:
     return " ".join((name or "").replace("\xa0", " ").lower().split())
 
 
+# Элемент `search_queries` — строка (поиск по всему тексту вакансии) или словарь
+# `{text: ..., field: name, priority: low}`. Сужение до названия (`search_field=name`
+# в RSS) введено 18.10.2026: широкие запросы ловили слова в описании и тащили в
+# очередь пересмотра «Продавец @ Магнит» и стоматологов — у «менеджер по продажам IT»
+# приток 480 → 30 в сутки, а в выдаче остались только продажи в IT.
+def query_label(entry) -> str:
+    """Подпись запроса: метка на вакансии и строка лога очереди пересмотра.
+    Суженный до названия — отдельная подпись: это другой срез выдачи."""
+    if isinstance(entry, dict):
+        text = entry.get("text", "")
+        return f"{text} [название]" if entry.get("field") == "name" else text
+    return entry or ""
+
+
+def _query_params(entry) -> dict:
+    if isinstance(entry, dict):
+        params = {"text": entry.get("text", "")}
+        if entry.get("field") == "name":
+            params["search_field"] = "name"
+        return params
+    return {"text": entry} if entry else {}
+
+
+def _tag_query(job: Job, label: str) -> None:
+    """Каким запросом найдена вакансия. Без метки очередь пересмотра нельзя было
+    разложить по запросам — аудит 18.10.2026 восстанавливал это живым замером RSS."""
+    found_by = job.raw.setdefault("hh_queries", [])
+    if label not in found_by:
+        found_by.append(label)
+
+
 class HHParser(BaseParser):
     name = "hh"
 
@@ -65,11 +96,13 @@ class HHParser(BaseParser):
         added_by_second = 0
 
         for query in self.cfg.get("search_queries", ["developer"]):
+            label = query_label(query)
             fresh = self._fetch_query(query, by_date=True)
             for job in fresh:
                 if job.id not in seen:
                     seen[job.id] = job
                     jobs.append(job)
+                _tag_query(seen[job.id], label)
 
             # Второй проход имеет смысл ТОЛЬКО для запросов, упёршихся в потолок:
             # если выдача короче 20, обе сортировки возвращают один и тот же полный
@@ -81,6 +114,7 @@ class HHParser(BaseParser):
                         seen[job.id] = job
                         jobs.append(job)
                         added_by_second += 1
+                    _tag_query(seen[job.id], label)
 
         if second_pass:
             logger.info("HH: +%d вакансий вторым проходом (по релевантности)",
@@ -125,8 +159,9 @@ class HHParser(BaseParser):
             return []
         seen: dict[str, Job] = {}
         for query in self.cfg.get("search_queries", []):
+            label = query_label(query)
             for job in self._fetch_query(query, by_date=True):
-                seen.setdefault(job.id, job)
+                _tag_query(seen.setdefault(job.id, job), label)
         return list(seen.values())
 
     def _fetch_employer(self, emp: dict, second_pass: bool = True) -> list[Job]:
@@ -156,11 +191,9 @@ class HHParser(BaseParser):
                 emp_id, emp.get("name"), len(fresh))
         return own
 
-    def _fetch_query(self, query: str | None, by_date: bool = True,
+    def _fetch_query(self, query: str | dict | None, by_date: bool = True,
                      employer_id: int | str | None = None) -> list[Job]:
-        params = {"area": self.cfg.get("area", 113)}
-        if query:
-            params["text"] = query
+        params = {"area": self.cfg.get("area", 113), **_query_params(query)}
         if employer_id:
             params["employer_id"] = employer_id
         if by_date:

@@ -48,3 +48,35 @@ def test_phrase_in_description_does_not_reject():
     text = SUPPORT_TEXT + " You will also help with content moderation escalations."
     ok, reasons = passes_hard_gates("Customer Support Specialist", text, "support_fintech")
     assert ok, reasons
+
+
+# Ритейл/склад/медицина — добавлено 18.10.2026 (разгрузка очереди пересмотра hh).
+@pytest.mark.parametrize("title", [
+    "Продавец в магазин LOVE REPUBLIC (ТЦ Ривьера)",
+    "Продавец-консультант (ТЦ Мега Тёплый Стан)",
+    "Магнит | продавец",
+    "Директор магазина",
+    "Кладовщик-комплектовщик в интернет-магазин",
+    "Главный бухгалтер в финтех-компанию",
+    "Ассистент врача-стоматолога",
+    "Торговый представитель Т2, Москва",
+])
+def test_retail_titles_rejected_for_every_role(title):
+    for role in CRITERIA["roles"]:
+        ok, reasons = passes_hard_gates(title, SUPPORT_TEXT, role)
+        assert not ok and reasons[0].startswith("title-exclude"), (role, reasons)
+    assert title_triage(title) == "drop"
+
+
+# Соседи, которые слова отсева резать НЕ должны — живые вакансии из замера.
+@pytest.mark.parametrize("title", [
+    "Казначей (Бухгалтер по учёту и контролю операций)",
+    "Экономист отдела финансового мониторинга (ПОД/ФТ)",
+    "Инженер АСУ ТП (техническая поддержка клиентов)",
+    "Специалист Клиентского сервиса в ветеринарный Колл-центр",
+])
+def test_retail_neighbours_not_excluded(title):
+    for role in CRITERIA["roles"]:
+        _, reasons = passes_hard_gates(title, SUPPORT_TEXT, role)
+        assert not (reasons and reasons[0].startswith("title-exclude")), (role, reasons)
+    assert title_triage(title) != "drop"
