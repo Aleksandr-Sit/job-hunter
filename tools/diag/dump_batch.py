@@ -24,12 +24,31 @@ def build_parsers():
     из всех замеров воронки (HEALTH_AUDIT F11)."""
     from src.parsers.registry import build_parsers as _build
 
+    # LinkedIn с 15.10.2026 работает через базу: пул li_pool и ротация стран
+    # li_geo_state. Дамп в боевом контейнере писал бы в БОЕВУЮ базу — забил бы пул
+    # уже оценёнными карточками и сбил ротацию. Поэтому — отдельная временная БД.
+    import tempfile
+
+    from src import storage
+    import src.matcher.title_triage as triage
+    storage.DB_PATH = Path(tempfile.mkdtemp()) / "dump.db"
+    storage.init_db()
+    # Батч — снимок ВСЕГО потока: карточки, которые бот режет по заголовку (drop),
+    # тоже нужны — иначе A/B по гейтам заголовка их не увидит.
+    triage.title_triage = lambda title, company=None: "high"
+
     cfg = yaml.safe_load((_ROOT / "config" / "settings.yaml").read_text(encoding="utf-8"))
     parsers = _build(cfg)
     # Батч для замеров — снимок ВСЕГО потока, а не только новых вакансий: боевой
     # LinkedIn пропускает описания увиденных (skip_seen), здесь они нужны.
     for p in parsers:
         p.skip_seen = False
+        if p.name == "linkedin":
+            # Все страны и время на описания всех карточек (~1700 × 3,5 с), но с
+            # запасом до планового прогона: дамп и прогон делят IP и лимит 429.
+            p.geos_per_run = 0
+            p.max_minutes = 135
+            p.max_descriptions = 5000
     return parsers
 
 
