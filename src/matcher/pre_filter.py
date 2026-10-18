@@ -990,6 +990,11 @@ def passes_hard_gates(title: str, text: str, role_key: str) -> tuple[bool, list[
         if _matches(t, blob):
             return False, [f"hard-exclude: '{t}'"]
 
+    # Только заголовок: фраза в описании не делает вакансию модерацией (см. criteria.yaml)
+    for t in CRITERIA.get("global_title_exclude", []):
+        if _matches(t, _n(title)):
+            return False, [f"title-exclude: '{t}'"]
+
     extra_reason = _extra_hard_gates(title, text, role_key)
     if extra_reason:
         return False, [extra_reason]
