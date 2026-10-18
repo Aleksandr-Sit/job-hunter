@@ -80,3 +80,39 @@ def test_retail_neighbours_not_excluded(title):
         _, reasons = passes_hard_gates(title, SUPPORT_TEXT, role)
         assert not (reasons and reasons[0].startswith("title-exclude")), (role, reasons)
     assert title_triage(title) != "drop"
+
+
+# Продажа курсов онлайн-школ — только в роли sales_remote (title_exclude роли), 18.10.2026.
+@pytest.mark.parametrize("title", [
+    "Менеджер по работе с клиентами в онлайн-школу",
+    "Менеджер по продажам (Zoom-Диагностики в онлайн школу)",
+    "Менеджер отдела продаж/Диагност",
+    "Менеджер по продажам онлайн-курсов по Нейросетям",
+    "Менеджер по продажам (онлайн-образование)",
+    "Менеджер по продажам образовательных услуг",
+])
+def test_online_school_sales_rejected_in_sales_role(title):
+    ok, reasons = passes_hard_gates(title, SUPPORT_TEXT, "sales_remote")
+    assert not ok and reasons[0].startswith("role-title-exclude"), reasons
+
+
+@pytest.mark.parametrize("title", [
+    "Технический специалист (онлайн школа на GetCourse)",
+    "Куратор по нейросетям и вайбкодингу в онлайн-школу",
+])
+def test_online_school_not_excluded_outside_sales(title):
+    for role in CRITERIA["roles"]:
+        if role == "sales_remote":
+            continue
+        _, reasons = passes_hard_gates(title, SUPPORT_TEXT, role)
+        assert not reasons[0].startswith("role-title-exclude"), (role, reasons)
+
+
+@pytest.mark.parametrize("title", [
+    "Key Account Manager (Курсы валют)",
+    "Менеджер по работе со школами",
+    "Менеджер по продажам (IT)",
+])
+def test_sales_neighbours_not_excluded(title):
+    _, reasons = passes_hard_gates(title, SUPPORT_TEXT, "sales_remote")
+    assert not reasons[0].startswith("role-title-exclude"), reasons
