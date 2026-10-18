@@ -610,9 +610,15 @@ _HEADERISH_OPTIONAL = re.compile(
 # `\s*$`. Пометка «плюс» отбрасывалась, и вакансия с ЖЕЛАТЕЛЬНЫМ языком
 # уходила в жёсткий отсев. Найдено 21.08.2026 на «Ukrainian language courses
 # are a nice-to-have benefit»; тот же баг задевал и гейт английского.
+# Наречие между связкой и пометкой — та же оговорка: «…EMI companies is HIGHLY
+# desirable.» (Advanced Payment Solutions, 18.10.2026) читалось как заголовок, и
+# весь хвост, включая «Fluent English … is required», уходил в «желательно».
 _LINKING_VERB_BEFORE = re.compile(
-    r'\b(is|are|was|were|be|been|will|would|it.s|это)\s*(?:an?|the)?\s*$',
+    r'\b(is|are|was|were|be|been|will|would|it.s|это)\s*(?:an?|the)?\s*(?:\w+ly\s*)?$',
     re.IGNORECASE)
+# Пометка «плюс», с которой начинается заголовок следующего раздела.
+_PLUS_STARTS_HEADER = re.compile(
+    r'(?:preferred|bonus)\s+(?:qualification|skill|requirement|point)', re.IGNORECASE)
 
 # Русские заголовки «Будет преимуществом» / «Будет плюсом» / «Плюсом будет» — самые
 # частые на hh.ru, и они не признавались заголовком вообще: язык из раздела-плюшки
@@ -700,11 +706,21 @@ def _mention_is_optional(blob: str, start: int, end: int) -> bool:
 
     plus = _LANG_PLUS_PATTERN.search(tail)
     # случай 1: пометка справа — заголовок СЛЕДУЮЩЕГО раздела, к нашему
-    # требованию она не относится («…English, at C1 level or above. Nice to have …»)
-    if plus and _marker_is_header(tail[:plus.start()], plus.group(0)):
+    # требованию она не относится («…English, at C1 level or above. Nice to have …»).
+    # «Preferred» — ещё и начало заголовка «Preferred Qualifications»: OKX P2P и
+    # Acumatica (18.10.2026), «Fluent in English; Preferred Qualifications …» —
+    # обязательный английский считался желательным.
+    if plus and (_marker_is_header(tail[:plus.start()], plus.group(0))
+                 or _PLUS_STARTS_HEADER.match(tail[plus.start():])):
         plus = None
     if plus:
         between = tail[:plus.start()]    # случай 2
+        # «Fluent in English and any other language is a plus» (HRus, 18.10.2026):
+        # «плюс» о ДРУГИХ языках. Проверять до продолжения списка — союз «and»
+        # иначе приписывает пометку нашему языку. RONIN («Russian and/or Greek»)
+        # не задевает: там язык назван поимённо, а не обобщённо.
+        if _OTHER_LANG_GENERIC.search(between):
+            return False
         # «Russian AND/OR Greek would be considered an advantage» (RONIN) — наш
         # язык в ТОМ ЖЕ перечислении, что и помеченный плюсом, значит пометка
         # относится и к нему. Отличается от «Greek (written and verbal) and
@@ -858,6 +874,27 @@ def _matches(term: str, text: str) -> bool:
 
 def _hits(terms: list[str], text: str) -> tuple[int, list[str]]:
     found = [t for t in terms if _matches(t, text)]
+    return len(found), found
+
+
+def _required_hits(terms: list[str], text: str) -> tuple[int, list[str]]:
+    """Как _hits, но фраза засчитывается, только если хоть одно её вхождение —
+    требование, а не пометка «плюс» и не раздел «желательно».
+
+    Для штрафа english_penalty: до 18.10.2026 он считал фразы по всему тексту,
+    хотя гейт английского те же разделы уже различал. xHuman, hh 138458820:
+    «Разговорный английский язык» под «Будет плюсом:» → −14…−18 во всех ролях.
+    """
+    found = []
+    for t in terms:
+        if not _matches(t, text):
+            continue
+        spans = [(m.start(), m.end())
+                 for m in re.finditer(re.escape(t.rstrip("*")), text)]
+        # Терм со звёздочкой в середине буквально не ищется — штрафуем как раньше.
+        if not spans or any(not _mention_is_optional(text, s, e)
+                            and not _in_optional_section(text, s) for s, e in spans):
+            found.append(t)
     return len(found), found
 
 
@@ -1124,7 +1161,7 @@ def score_vacancy(title: str, text: str, role_key: str) -> dict:
             score += _W["onsite"]; reasons.append("только офис в неподходящей локации")
 
     ew = role["english_weight"]
-    nep, fep = _hits(CRITERIA["english_penalty"], blob)
+    nep, fep = _required_hits(CRITERIA["english_penalty"], blob)
     if nep:
         sub = int(nep * _W["english_penalty_each"] * ew)
         score += sub; reasons.append(f"{sub} требуется сильный английский: {', '.join(fep[:4])}")
