@@ -219,6 +219,10 @@ global_title_exclude:
 #   Netex24, Cryptex, Bitpapa — OFAC 2024. Bitzlato — дело DOJ.
 #   Mosca — обыск по делу о мошенничестве. Cryptomus — штраф FINTRAC ≈CAD 176 млн.
 #   BitRiver — арест основателя 22.07.2026, банкротство, ДЦ стоят.
+#   Holiverse (+ Forsage, Meta Force, Meta Whale) — добавлен 20.10.2026: одна
+#     структура под разными именами (регулятор Словении, ICIJ «Coin Laundry»,
+#     17.11.2025); основатель Охотников — обвинение в США по пирамиде Forsage,
+#     заочно 10 лет в Грузии за отмывание. Нанимает KYC/AML на hh (138020805).
 # Проверяется по полю «компания» и по ЗАГОЛОВКУ (у Telegram в «компании» лежит
 # канал, работодатель — в заголовке), целым словом. Описание НЕ проверяется:
 # «опыт работы с Garantex» у кандидата не делает работодателя санкционным.
@@ -240,6 +244,12 @@ employer_blocklist:
   - "cryptomus"
   - "bitriver"
   - "битривер"
+  - "holiverse"
+  - "forsage"
+  - "meta force"
+  - "metaforce"
+  - "meta whale"
+  - "metawhale"
 
 english_gate_levels:
   - spoken

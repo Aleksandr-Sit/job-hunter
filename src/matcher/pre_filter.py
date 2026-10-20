@@ -909,7 +909,9 @@ _W = CRITERIA["weights"]
 # Стоп-лист работодателей (санкции, уголовные дела) — см. employer_blocklist в
 # criteria.yaml. Целое слово, а не подстрока: «htx» не должен срезать «Chtx Labs».
 _EMPLOYER_BLOCKLIST = [
-    (term, re.compile(r"(?<!\w)" + re.escape(term.lower()) + r"(?!\w)"))
+    # Пробел в термине — любой пробельный: hh пишет «Meta\xa0Force» неразрывным.
+    (term, re.compile(r"(?<!\w)" + re.escape(term.lower()).replace(r"\ ", r"\s+")
+                      + r"(?!\w)"))
     for term in CRITERIA.get("employer_blocklist") or []
 ]
 _BLOCKED_EMPLOYER_REASON = "работодатель в стоп-листе (санкции/уголовные дела)"
