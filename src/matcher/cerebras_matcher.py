@@ -13,6 +13,7 @@ Batch matcher поверх любого OpenAI-совместимого пров
 import json
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -186,6 +187,12 @@ this candidate. A schedule built around night or evening shifts is close to a
 dealbreaker: score it below 50. He must never learn about night shifts only
 after opening the listing.
 
+WATCH_OUT must list only drawbacks that follow from the LISTING TEXT. Mention
+English in watch_out ONLY if the listing itself mentions English or a foreign
+language. Never write speculation like "English is not stated, but there may be
+international clients/meetings" — the candidate's English level is NOT a
+drawback of a listing that does not ask for it.
+
 Do NOT penalise a job merely for being a sales role. Penalise only the cold
 outbound part described above. Sales on inbound leads, account management,
 customer success and upselling to existing clients match the candidate's
@@ -349,6 +356,23 @@ def _is_provider_dead(err: BaseException) -> bool:
     return _error_status(err) in _DEAD_STATUS
 
 
+# Модель знает из профиля, что английский у кандидата A1–A2, и вписывает это в
+# watch_out даже там, где вакансия про язык молчит: «не указано, но возможны
+# международные клиенты». Замер 20.10.2026: у 72 из 310 отправленных карточек
+# английский стоял среди двух видимых пунктов «Учесть» (formatter показывает
+# только два) и вытеснял настоящие минусы. Правило в промпте модель нарушает,
+# поэтому страхуемся кодом: язык не упомянут в вакансии — пункт про него убираем.
+_EN_IN_LISTING = re.compile(r'англ|english|иностранн\w*\s+язык', re.IGNORECASE)
+_EN_IN_NOTE = re.compile(r'англ|english', re.IGNORECASE)
+
+
+def _drop_unasked_english(watch_out: list, job: Optional[Job]) -> list:
+    """Убирает из watch_out пункты про английский, если вакансия о нём молчит."""
+    if job is None or _EN_IN_LISTING.search(f"{job.title}\n{job.description}"):
+        return watch_out
+    return [w for w in watch_out if not _EN_IN_NOTE.search(str(w))]
+
+
 def match_batch(jobs: list[Job], client: Optional[OpenAI] = None,
                 provider: Optional[Provider] = None) -> Optional[list[MatchResult]]:
     """Возвращает список результатов, либо None при сбое API/парсинга ответа.
@@ -439,6 +463,7 @@ def match_batch(jobs: list[Job], client: Optional[OpenAI] = None,
             logger.error("JSON parse error: %s | raw: %s", e, raw[:300])
             return None
 
+    by_id = {j.id: j for j in jobs}
     results = []
     for item in data:
         try:
@@ -446,7 +471,8 @@ def match_batch(jobs: list[Job], client: Optional[OpenAI] = None,
                 job_id=str(item["id"]),
                 score=int(item["score"]),
                 why_fits=item.get("why_fits", []),
-                watch_out=item.get("watch_out", []),
+                watch_out=_drop_unasked_english(
+                    item.get("watch_out", []), by_id.get(str(item["id"]))),
                 recommendation=item.get("recommendation", ""),
             ))
         except Exception as e:
