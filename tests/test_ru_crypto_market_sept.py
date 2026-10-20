@@ -74,6 +74,19 @@ class TestEmployerBlocklist:
         assert all(not r["passed_gate"] for r in scored["all"])
         assert "стоп-листе" in scored["best"]["reasons"][0]
 
+    # Holiverse = ребрендинг пирамиды Forsage/Meta Force (ICIJ, 17.11.2025):
+    # блокируются все имена структуры, иначе следующий ребрендинг пройдёт.
+    @pytest.mark.parametrize("company", ["Holiverse", "Forsage", "Meta Force",
+                                         "MetaForce", "Meta Whale"])
+    def test_holiverse_family_is_rejected(self, company):
+        scored = score_job(_job(company=company, title="KYC/AML Officer (Compliance Officer)"))
+        assert all(not r["passed_gate"] for r in scored["all"])
+
+    @pytest.mark.parametrize("company", ["Meta Platforms", "Форсаж", "Metaverse Labs",
+                                         "Holistic Health"])
+    def test_holiverse_family_lookalikes_pass(self, company):
+        assert _blocked_employer(company, "Специалист поддержки") is None
+
     def test_block_is_hard_not_soft(self):
         # Иначе HH-пересмотр отказов потратит на неё скачивание полного описания.
         assert not is_soft_reject(score_job(_job(company="ABCEX")))
