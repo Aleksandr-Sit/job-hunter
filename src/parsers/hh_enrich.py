@@ -128,6 +128,94 @@ def _format_note(html: bytes) -> str:
     return f"{WORK_FORMAT_LABEL} {', '.join(f.decode() for f in formats)}\n"
 
 
+# График, часы и ночные смены — структурные поля той же страницы (26.10.2026).
+# В тексте описания их часто нет: из 41 сменной вакансии, ушедшей в Telegram за
+# 22.09–26.10, бот по тексту видел 17, остальные 24 — только здесь. OsteoFace
+# (hh 137767979) — «График: 6/1» в поле, а в тексте ни слова; владелец откликнулся,
+# не зная о шестидневке.
+#
+# Строки пишутся КОДАМИ hh (TWO_ON_TWO_OFF, HOURS_12), а не «2/2» и «ночные смены»:
+# текстовые regex предфильтра приняли бы подпись за фразу работодателя
+# («график (hh): 2/2» — это `_SHIFT_SCHEDULE`, «ночные смены (hh)» — `_NIGHT_CORE`,
+# причём без поправки на FLEXIBLE). Человеческие подписи — в `schedule_summary`.
+# Предфильтр ищет эти подписи в нижнем регистре (`pre_filter._HH_SCHEDULE` и др.).
+SCHEDULE_LABEL = "График (hh):"
+HOURS_LABEL = "Часы в день (hh):"
+NIGHT_LABEL = "Работа ночью (hh):"
+
+
+def _field(page: bytes, key: bytes) -> list[str]:
+    """Коды поля hh: плоский список, иначе вложенный `[{"<key>Element":[…]}]`.
+
+    Справочник `[{"id":"SIX_ON_ONE_OFF","text":"6/1"},…]` со ВСЕМИ вариантами под
+    тем же ключом сюда не попадает: после `[` в нём стоит `{`, а не строка.
+    Логика проверена выгрузкой 837 страниц (data/scans/schedule_audit_tools)."""
+    m = re.search(rb'"' + key + rb'":\s*\[((?:\s*"[A-Z0-9_]+"\s*,?)*)\]', page)
+    if m and m.group(1).strip():
+        return [x.decode() for x in re.findall(rb"[A-Z0-9_]+", m.group(1))]
+    m = re.search(rb'"' + key + rb'":\s*\[\{"' + key + rb'Element":\s*\[((?:\s*"[A-Z0-9_]+"\s*,?)*)\]',
+                  page)
+    if m:
+        return [x.decode() for x in re.findall(rb"[A-Z0-9_]+", m.group(1))]
+    return []
+
+
+def _schedule_note(html: bytes) -> str:
+    """Строки графика hh для начала описания или пусто, если полей нет.
+
+    «Работа ночью» пишется только при `nightShifts: true`: «нет» в описании ничего
+    не добавляет, а места в начале описания мало (в промпт AI идут первые 700 символов)."""
+    html = html.replace(b"&#34;", b'"').replace(b"&quot;", b'"')
+    lines = []
+    days = _field(html, b"workScheduleByDays")
+    if days:
+        lines.append(f"{SCHEDULE_LABEL} {', '.join(days)}")
+    hours = _field(html, b"workingHours")
+    if hours:
+        lines.append(f"{HOURS_LABEL} {', '.join(hours)}")
+    night = re.search(rb'"nightShifts":\s*(true|false)', html)
+    if night and night.group(1) == b"true":
+        lines.append(f"{NIGHT_LABEL} да")
+    return "".join(f"{line}\n" for line in lines)
+
+
+# Подписи для карточки Telegram: владелец читает «6/1», а не SIX_ON_ONE_OFF.
+_DAYS_RU = {
+    "SIX_ON_ONE_OFF": "6/1", "FIVE_ON_TWO_OFF": "5/2", "FOUR_ON_FOUR_OFF": "4/4",
+    "FOUR_ON_THREE_OFF": "4/3", "FOUR_ON_TWO_OFF": "4/2", "THREE_ON_THREE_OFF": "3/3",
+    "THREE_ON_TWO_OFF": "3/2", "TWO_ON_TWO_OFF": "2/2", "TWO_ON_ONE_OFF": "2/1",
+    "ONE_ON_THREE_OFF": "1/3", "ONE_ON_TWO_OFF": "1/2", "WEEKEND": "по выходным",
+    "FLEXIBLE": "свободный", "OTHER": "другой",
+}
+
+
+def _hours_ru(code: str) -> str:
+    if code.startswith("HOURS_"):
+        return f"{code[6:]} ч"
+    return {"FLEXIBLE": "по договорённости", "OTHER": "другое"}.get(code, code)
+
+
+def schedule_summary(description: str | None) -> str:
+    """«6/1 · 8 ч или по договорённости · есть ночные смены» по строкам hh в
+    описании, или пусто (вакансия не с hh или поля не заполнены)."""
+    text = description or ""
+    parts = []
+
+    def codes(label: str) -> list[str]:
+        m = re.search(re.escape(label) + r"\s*([A-Z0-9_, ]+)", text)
+        return re.findall(r"[A-Z0-9_]+", m.group(1)) if m else []
+
+    days = codes(SCHEDULE_LABEL)
+    if days:
+        parts.append(" или ".join(_DAYS_RU.get(d, d) for d in days))
+    hours = codes(HOURS_LABEL)
+    if hours:
+        parts.append(" или ".join(_hours_ru(h) for h in hours))
+    if f"{NIGHT_LABEL} да" in text:
+        parts.append("есть ночные смены")
+    return " · ".join(parts)
+
+
 # Зарплата со страницы — 18.10.2026. RSS-версия вакансии лежит в пуле до 14 дней
 # (`storage.pool_add` — INSERT OR IGNORE, первая увиденная), и если работодатель
 # снизил сумму, бот слал старую: Ozon Банк «до 90 000» в карточке при «до 75 000»
@@ -198,7 +286,10 @@ def _fetch(url: str, session: requests.Session | None = None
         text = _extract(r.content)
         if not text:
             return "", size, None
-        return _format_note(r.content) + text, size, _compensation(r.content)
+        # График — первым: за строкой «График (hh)» идёт ещё строка hh, а не текст
+        # работодателя («…: OTHER\n2/2 …» дало бы `_SHIFT_SCHEDULE` ложную фразу).
+        return (_schedule_note(r.content) + _format_note(r.content) + text,
+                size, _compensation(r.content))
     except Exception as e:
         logger.debug("HH enrich: %s -> %s", m.group(1), str(e)[:100])
         return "", 0, None
