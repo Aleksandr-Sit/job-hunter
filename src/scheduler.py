@@ -454,6 +454,17 @@ def harvest_linkedin() -> None:
         _RUN_LOCK.release()
 
 
+def watch_hh_chats() -> None:
+    """Сторож чатов hh (26.10.2026): вопросы робота-рекрутёра и работодателей —
+    карточкой в Telegram. Замок прогона не берёт: ресурсы у него свои (chatik),
+    а ждать часовой прогон вакансий ради чтения чатов незачем."""
+    try:
+        from .hh_chats.watch import run_watch
+        run_watch()
+    except Exception:
+        logger.exception("Сторож чатов hh упал")
+
+
 def run_once() -> None:
     with _RUN_LOCK:
         try:
@@ -679,6 +690,14 @@ def main() -> None:
         scheduler.add_job(harvest_linkedin, "cron", minute=h[0], hour=h[1],
                           day=h[2], month=h[3], day_of_week=h[4])
         logger.info("LinkedIn докачка описаний (UTC): %s", li_expr)
+
+    chats_cfg = cfg.get("hh_chats") or {}
+    chats_expr = chats_cfg.get("cron") if chats_cfg.get("enabled") else ""
+    if chats_expr:
+        h = chats_expr.split()
+        scheduler.add_job(watch_hh_chats, "cron", minute=h[0], hour=h[1],
+                          day=h[2], month=h[3], day_of_week=h[4])
+        logger.info("Сторож чатов hh (UTC): %s", chats_expr)
 
     # Первый запуск сразу. Под защитой: без неё падение стартового прогона роняло
     # контейнер целиком, а `restart: unless-stopped` поднимал его заново — карусель

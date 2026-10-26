@@ -12,6 +12,10 @@ data/
 config/profile/*
 !config/profile/*.example
 
+# Cookie сессии hh: Dockerfile делает COPY config/, без этой строки cookie
+# запеклись бы в образ. В контейнер они приходят bind-mount'ом.
+config/hh_session/
+
 # Не нужно в рантайме
 docs/
 tests/

@@ -92,6 +92,24 @@ def init_db() -> None:
                 job_id TEXT NOT NULL,
                 created_at TEXT NOT NULL
             );
+
+            -- Сторож чатов hh (26.10.2026): о каких позициях уже прислана карточка.
+            -- Ключ — msg:<id сообщения>, robot:<чат>:<хэш вопроса>, discard:<чат>.
+            -- Робот повторяет вопрос раз в сутки новым сообщением, поэтому его
+            -- ключ — текст вопроса, а не id: иначе карточка приходила бы каждый день.
+            CREATE TABLE IF NOT EXISTS hh_chat_notified (
+                key TEXT PRIMARY KEY,
+                chat_id TEXT NOT NULL,
+                notified_at TEXT NOT NULL
+            );
+
+            -- Мелкое состояние между запусками (сессия hh жива/истекла, счётчик
+            -- сбоев сети): алерт шлётся на переходе, а не каждый запуск.
+            CREATE TABLE IF NOT EXISTS kv_state (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
         """)
         # Миграция: версия скоринга (промпт+профиль+критерии). Кэш с другой
         # версией считается устаревшим и пересчитывается — иначе смена критериев
@@ -463,3 +481,50 @@ def application_stats(stale_days: int = 14) -> dict:
                WHERE status = 'applied' AND applied_at < ?""", (stale_before,)
         ).fetchone()["c"]
     return {"total": total, "last7": last7, "stale": stale, "stale_days": stale_days}
+
+
+# ── Сторож чатов hh ───────────────────────────────────────────────────────────
+
+def hh_chat_known(keys: list) -> set:
+    """Ключи позиций, о которых карточка уже уходила."""
+    if not keys:
+        return set()
+    known: set = set()
+    with get_conn() as conn:
+        for i in range(0, len(keys), 500):
+            chunk = keys[i:i + 500]
+            marks = ",".join("?" * len(chunk))
+            rows = conn.execute(
+                f"SELECT key FROM hh_chat_notified WHERE key IN ({marks})", chunk
+            ).fetchall()
+            known.update(r["key"] for r in rows)
+    return known
+
+
+def hh_chat_mark(pairs: list) -> None:
+    """Запоминает позиции как уведомлённые. pairs — [(ключ, id чата)]."""
+    if not pairs:
+        return
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        conn.executemany(
+            "INSERT OR IGNORE INTO hh_chat_notified (key, chat_id, notified_at) "
+            "VALUES (?,?,?)",
+            [(k, str(c), now) for k, c in pairs],
+        )
+
+
+def state_get(key: str, default: str = "") -> str:
+    with get_conn() as conn:
+        row = conn.execute("SELECT value FROM kv_state WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else default
+
+
+def state_set(key: str, value: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO kv_state (key, value, updated_at) VALUES (?,?,?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value, "
+            "updated_at = excluded.updated_at",
+            (key, value, datetime.now(timezone.utc).isoformat()),
+        )

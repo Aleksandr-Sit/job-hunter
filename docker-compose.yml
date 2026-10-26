@@ -13,6 +13,8 @@ services:
       # Конфиги (каналы, настройки)
       - ./config/settings.yaml:/app/config/settings.yaml
       - ./config/sources.yaml:/app/config/sources.yaml
+      # Cookie сессии hh для сторожа чатов — вне git и вне образа, только чтение
+      - ./config/hh_session:/app/config/hh_session:ro
     logging:
       driver: "json-file"
       options:
