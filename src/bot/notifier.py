@@ -93,6 +93,17 @@ def send_text(text: str) -> bool:
     return asyncio.run(_send_text_async(text))
 
 
+def send_card(text: str, links: list[tuple[str, str]]) -> bool:
+    """Сообщение с кнопками-ссылками в один ряд (карточки сторожа чатов hh).
+    Пустые ссылки пропускаются. True — Telegram принял сообщение."""
+    row = [InlineKeyboardButton(label, url=url) for label, url in links if url]
+    keyboard = InlineKeyboardMarkup([row]) if row else None
+
+    async def _go() -> bool:
+        return await _send_message_async(_get_bot(), _get_chat_id(), text, keyboard)
+    return asyncio.run(_go())
+
+
 # ── тест ──────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     import argparse
