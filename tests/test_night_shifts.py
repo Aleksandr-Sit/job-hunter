@@ -196,6 +196,10 @@ class TestRigidScheduleByHhFields:
         (["FIVE_ON_TWO_OFF"], ["HOURS_12", "FLEXIBLE"], None),   # 12 ч или по договорённости
         (["FLEXIBLE"], ["HOURS_8"], True),                       # ночи есть, но график свободный
         (["FIVE_ON_TWO_OFF"], ["FLEXIBLE"], True),
+        # ночь — одна из опций при выборе 5/2 (замер 27.10: 101 Интернет «2/2 или 5/2,
+        # смены по 6, 9 или 12 часов, доплата 50% за ночь»; «5/2, 2/2 в день, 2/2 в ночь»)
+        (["FIVE_ON_TWO_OFF", "TWO_ON_TWO_OFF"], ["HOURS_6", "HOURS_9", "HOURS_12"], True),
+        (["FIVE_ON_TWO_OFF", "TWO_ON_TWO_OFF"], ["HOURS_8", "HOURS_10"], True),
         (["FIVE_ON_TWO_OFF"], ["HOURS_8"], False),
         (["OTHER"], ["HOURS_8"], False),
     ])
@@ -246,9 +250,22 @@ class TestRigidScheduleByText:
         "No shift work, Monday to Friday",
         "График работы 5/2",
         "Специалист поддержки, удалённо, полный день",
+        # диапазон будних дней — пятидневка, а не смены (27.10.2026)
+        "Shift schedule: Monday-Friday 9am-6pm",
+        "Shift schedule: Mon - Fri",
+        "Shift work: Sunday-Thursday",            # рабочая неделя ОАЭ
+        "Сменная работа с понедельника по пятницу",
+        "Сменный график, пн-пт",
     ])
     def test_not_cut(self, txt):
         assert pf._rigid_schedule(pf._n(txt)) is None
+
+    @pytest.mark.parametrize("txt", [
+        "Rotating shifts, Saturday-Wednesday",
+        "Shift schedule: monthly rotation, nights",
+    ])
+    def test_other_day_ranges_still_cut(self, txt):
+        assert pf._rigid_schedule(pf._n(txt)) is not None
 
 
 class TestShiftNegation:

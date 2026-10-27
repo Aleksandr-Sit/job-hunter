@@ -210,6 +210,21 @@ _REMOTE_NEG_RIGHT = re.compile(
     r"невозмож|исключ|отсутству|нет\b|not\s+(?:possible|available|offered))")
 # «Удаленная работа: опыт удаленной поддержки» — заголовок навыка в требованиях
 _REMOTE_SKILL_RIGHT = re.compile(r"^\s*:\s*(?:опыт|навык|знани|умени|experience)")
+# «можно работать удаленно 1 день в неделю» — число дней СПРАВА, тоже гибрид
+_REMOTE_PARTIAL_RIGHT = re.compile(
+    r"^[^.;!?\n]{0,12}?\b[1-4]\s*(?:дн|день|раз\w*\s+в\s+недел)")
+# Обещания удалёнки, которых нет в общем `_EXPLICIT_REMOTE` (его же зовут
+# normalize.detect_remote и штраф зарубежного офиса — туда не добавлял, чтобы не
+# менять их поведение). Замер 27.10.2026 на наборе 888: без них ложно резались
+# Apyflow «работаем удалённо… Удалённо из любой точки», «Специалист по внедрению
+# ИИ» «возможность удаленного формата работы с командировками в Москву» и «Возможен
+# вариант удаленной работы, после испытательного срока». Голое «удалённо» не беру:
+# «решение инцидентов на месте и удаленно», «пользователей, работающих удалённо» —
+# обязанности, а не формат.
+_REMOTE_PROMISE_MORE = re.compile(
+    r"работаем\s+удал[её]нно|удал[её]нно\s+из\s+любой\s+точки|"
+    r"(?:можно|можешь|можете)\s+работать\s+(?:полностью\s+)?удал[её]нно|"
+    r"возмож\w*\s+(?:вариант\s+)?удал[её]нн\w*\s+(?:формат|работ)\w*")
 
 
 def _remote_promised(blob: str) -> str | None:
@@ -217,14 +232,17 @@ def _remote_promised(blob: str) -> str | None:
 
     `blob` в нижнем регистре. Слева смотрим только свою часть фразы (до 60
     символов, до точки или скобки): отрицание дальше — уже про другое."""
-    for m in _EXPLICIT_REMOTE.finditer(blob):
+    hits = sorted([*_EXPLICIT_REMOTE.finditer(blob), *_REMOTE_PROMISE_MORE.finditer(blob)],
+                  key=lambda m: m.start())
+    for m in hits:
         left = blob[max(0, m.start() - 60): m.start()]
         cut = list(_REMOTE_CLAUSE_START.finditer(left))
         left = left[cut[-1].end():] if cut else left
         right = blob[m.end(): m.end() + 40]
         if _REMOTE_NEG_LEFT.search(left) or _REMOTE_PARTIAL_LEFT.search(left):
             continue
-        if _REMOTE_NEG_RIGHT.search(right) or _REMOTE_SKILL_RIGHT.search(right):
+        if (_REMOTE_NEG_RIGHT.search(right) or _REMOTE_SKILL_RIGHT.search(right)
+                or _REMOTE_PARTIAL_RIGHT.search(right)):
             continue
         return m.group(0)
     return None
@@ -570,7 +588,11 @@ def _shift_negated(blob: str, match: re.Match) -> bool:
 # Режем, если смены — единственный режим:
 #   - график hh непустой и весь из сменных (2/2, 3/3, 6/1, по выходным…);
 #   - часы hh непустые и только 10/11/12/24;
-#   - ночные смены по полю hh, а свободного графика или часов нет;
+#   - ночные смены по полю hh, а свободного графика или часов нет и выбора тоже нет.
+#     Выбор — 5/2 или 4/3 наряду со сменами: «2/2 или 5/2, смены по 6, 9 или 12 часов,
+#     доплата 50% за работу в ночь», «5/2, 2/2 в день, 2/2 в ночь». Ночь там — одна
+#     из опций; замер 27.10 на наборе 888: шесть из семи срезанных по полю были такими,
+#     а «5/2 или 2/2 на выбор» владелец велел не трогать;
 #   - графика hh нет (LinkedIn, ATS, Telegram) — фраза о сменах без отрицания и без
 #     альтернативы в тексте (5/2, пятидневка, гибкий/свободный график, flexible).
 # НЕ режем, если в графике hh есть 5/2, 4/3, свободный или «другой» наряду со
@@ -587,6 +609,7 @@ _RIGID_DAYS = frozenset({
     "six_on_one_off", "weekend",
 })
 _LONG_HOURS = frozenset({"hours_10", "hours_11", "hours_12", "hours_24"})
+_DAY_ALTERNATIVE = frozenset({"five_on_two_off", "four_on_three_off"})   # 5/2, 4/3
 _DAYS_LABEL = {
     "two_on_two_off": "2/2", "three_on_three_off": "3/3", "four_on_four_off": "4/4",
     "four_on_two_off": "4/2", "three_on_two_off": "3/2", "two_on_one_off": "2/1",
@@ -595,10 +618,18 @@ _DAYS_LABEL = {
 }
 # Альтернатива сменам в том же тексте: «график 5/2 или 2/2 на выбор», «сменный
 # или гибкий график». С ней вакансия не режется — остаётся штраф.
+# Диапазон будних дней — тоже пятидневка: «Shift schedule: Monday-Friday 9am-6pm»,
+# «Shift work: Sunday-Thursday» (рабочая неделя ОАЭ) — слово shift там про часы, а
+# не про сменный режим (проверено 27.10.2026 перед замером на батче).
+_WEEKDAY_RANGE = (
+    r"\b(?:monday|mon)\W{1,5}(?:to\W{1,3}|through\W{1,3})?(?:friday|fri)\b|"
+    r"\b(?:sunday|sun)\W{1,5}(?:to\W{1,3}|through\W{1,3})?(?:thursday|thu)\b|"
+    r"понедельник\w*\W{1,5}(?:по\W{1,3})?пятниц\w*|\bпн\W{1,3}пт\b|"
+    r"воскресень\w*\W{1,5}(?:по\W{1,3})?четверг\w*")
 _SHIFT_ALTERNATIVE = re.compile(
     r"\b5\s*(?:/|х|x|на|через)\s*2\b|пятидневк\w*|пятидневн\w*|"
     r"гибк\w*\s+(?:график|режим|начал|рабоч\w*\s+(?:день|врем|час))|"
-    r"свободн\w*\s+(?:график|режим)|\bflexib",
+    r"свободн\w*\s+(?:график|режим)|\bflexib|" + _WEEKDAY_RANGE,
     re.IGNORECASE,
 )
 
@@ -616,7 +647,8 @@ def _rigid_schedule(blob: str) -> str | None:
         return "график hh " + ", ".join(sorted(_DAYS_LABEL[d] for d in days))
     if hours and hours <= _LONG_HOURS:
         return "смена hh " + ", ".join(sorted(h[6:] for h in hours)) + " ч"
-    if _HH_NIGHT.search(blob) and "flexible" not in days | hours:
+    day_choice = len(days) > 1 and bool(days & _DAY_ALTERNATIVE)
+    if _HH_NIGHT.search(blob) and "flexible" not in days | hours and not day_choice:
         return "ночные смены по полю hh"
     if days:
         return None     # в графике hh есть 5/2, 4/3, свободный или «другой»
@@ -734,7 +766,8 @@ def _cold_outreach(blob: str) -> str | None:
 # ── 3d. Работодатель ждёт, что сотрудник САМ пользуется ИИ ────────────────────
 # Решение владельца 26.10.2026: цель — расти в ИИ, поэтому вакансия, где ИИ —
 # рабочий инструмент сотрудника («используете ChatGPT и Claude в работе», «готовность
-# применять нейросети»), получает прибавку `ai_tools` и пометку в карточке.
+# применять нейросети»), получает пометку в карточке и прибавку `ai_tools` (вес в
+# criteria.yaml; с 27.10.2026 — 0 по замеру: прибавка тащила к AI только чужие роли).
 # «Мы разрабатываем AI-платформу» (ИИ в продукте) и «опыт проектов AI/ML» (ИИ в
 # опыте) — не то: там ИИ — предмет работы, а не инструмент. В наборе 888 карточек
 # 22.09–26.10 первое — 123 вакансии, из них 57 не AI-ролей.
