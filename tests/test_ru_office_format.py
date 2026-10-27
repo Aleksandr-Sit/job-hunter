@@ -2,9 +2,15 @@
 
 Повод 25.09.2026: RSS hh отдаёт только город, а дообогащение брало лишь блок
 описания. Поэтому отделения ВТБ получали +10 за «удалённая консультация» в тексте,
-а офис РТ-ИБ у м. «Южная» не штрафовался вовсе. Решение владельца: удалёнка в
-приоритете, офис в другом городе — штраф (исключительный оффер он хочет видеть),
+а офис РТ-ИБ у м. «Южная» не штрафовался вовсе. Решение владельца тогда: удалёнка в
+приоритете, офис в другом городе — штраф (исключительный оффер он хотел видеть),
 офис в Самаре — отдельный вес.
+
+26.10.2026 владелец решение изменил: цель — удалёнка и свободный график под
+тренировки, поэтому офис/гибрид в ДРУГОМ городе с известной локацией режет гейт
+`_office_elsewhere`. Штраф −10 не держал: AI ставил таким 80+, и за 22.09–26.10 их
+ушло в Telegram 291 из 888. Самара, страны релокации, пустая локация и текст, ЯВНО
+обещающий удалёнку, — не режутся.
 """
 import pytest
 
@@ -41,10 +47,11 @@ def test_format_note_absent_field():
     assert he._format_note(b"<html>no field</html>") == ""
 
 
-def _score(formats: bytes | None, city: str) -> dict:
+def _score(formats: bytes | None, city: str, extra: str = "") -> dict:
+    """Пустой `city` — вакансия без локации (строки Location нет вовсе)."""
     note = he._format_note(_page(formats)) if formats else ""
-    return score_vacancy("Аккаунт-менеджер", f"{note}{_TEXT}Location: {city}",
-                         "sales_remote")
+    loc = f"Location: {city}" if city else ""
+    return score_vacancy("Аккаунт-менеджер", f"{note}{_TEXT}{extra}{loc}", "sales_remote")
 
 
 def test_remote_field_keeps_remote_bonus():
@@ -53,25 +60,91 @@ def test_remote_field_keeps_remote_bonus():
     assert not any("офис" in x for x in r["reasons"])
 
 
-@pytest.mark.parametrize("formats", [b'["ON_SITE"]', b'["HYBRID"]'])
-def test_office_in_other_city_is_penalised_not_rejected(formats):
-    remote = _score(b'["REMOTE"]', "Москва")
+def test_all_three_formats_stay():
+    """«На месте, удалённо, гибрид» сразу — удалёнка есть, вакансия остаётся.
+    В наборе 888 таких 72: резать их значило бы срезать удалённые вакансии."""
+    r = _score(b'["ON_SITE","REMOTE","HYBRID"]', "Москва")
+    assert r["passed_gate"]
+    assert "remote" in r["reasons"]
+    assert not any("другом городе" in x for x in r["reasons"])
+
+
+@pytest.mark.parametrize("formats", [
+    b'["ON_SITE"]', b'["HYBRID"]', b'["ON_SITE","HYBRID"]', b'["FIELD_WORK"]',
+])
+def test_office_in_other_city_is_rejected(formats):
     office = _score(formats, "Москва")
-    assert "remote" not in office["reasons"], "слово «удалённая» в тексте — не формат"
-    assert "офис/гибрид в другом городе РФ, удалёнки нет" in office["reasons"]
-    assert office["passed_gate"] and office["score"] < remote["score"]
+    assert not office["passed_gate"]
+    assert office["reasons"] == ["офис/гибрид в другом городе (Москва), удалёнки нет"]
 
 
-def test_home_city_office_is_softer_than_other_city():
-    home = _score(b'["ON_SITE"]', "Самара")
-    other = _score(b'["ON_SITE"]', "Казань")
-    assert home["score"] > other["score"]
-    assert any("Самаре" in x for x in home["reasons"])
+def test_reject_reason_names_the_city():
+    r = _score(b'["ON_SITE"]', "Санкт-Петербург")
+    assert r["reasons"] == ["офис/гибрид в другом городе (Санкт-Петербург), удалёнки нет"]
+
+
+@pytest.mark.parametrize("formats", [b'["ON_SITE"]', b'["HYBRID"]'])
+def test_home_city_office_stays(formats):
+    """Офис в Самаре — городе кандидата — не переезд: не режем, вес onsite_home."""
+    home = _score(formats, "Самара")
+    assert home["passed_gate"]
+    assert "офис/гибрид в Самаре" in home["reasons"]
 
 
 def test_relocation_city_office_is_not_ru_office():
     r = _score(b'["ON_SITE"]', "Ереван")
-    assert not any("РФ" in x for x in r["reasons"])
+    assert r["passed_gate"]
+    assert not any("РФ" in x or "другом городе" in x for x in r["reasons"])
+
+
+def test_empty_location_keeps_penalty():
+    """Локации нет — резать не на чем: остаётся штраф onsite_ru_city."""
+    r = _score(b'["HYBRID"]', "")
+    assert r["passed_gate"]
+    assert "офис/гибрид в другом городе РФ, удалёнки нет" in r["reasons"]
+
+
+# Живые формулировки набора 888 (22.09–26.10.2026): офис по полю hh, а в тексте —
+# «удалённ…». Шесть из них удалёнку отрицают или сужают — такие режем.
+@pytest.mark.parametrize("phrase", [
+    # hh 134525423
+    "Не предлагаем частичную, проектную занятость, а так же удаленный формат работы. "
+    "График работы: 5/2 (понедельник-пятница).",
+    # hh 138500907
+    "Ищем специалистов технической поддержки первой и второй линий в офис "
+    "(не удаленная работа).",
+    # hh 138435582
+    "Обращаю ваше внимание что работа в офисе г Екатеринбурга (не удаленный формат).",
+    # hh 138347753
+    "Мы предлагаем: Формат работы: офис ( удаленный формат не предусмотрен! )",
+    # hh 138053829 — один день в неделю из дома, это не удалёнка
+    "У нас есть зоны отдыха, чай/кофе и праздничный бар, 1 день по выбору - удаленный формат.",
+    # hh 137257944 — заголовок навыка в требованиях, а не формат работы
+    "Базовая диагностика сетевых неполадок на рабочем месте. Удаленная работа: опыт "
+    "удаленной поддержки AnyDesk/TeamViewer.",
+])
+def test_text_denying_remote_is_cut(phrase):
+    r = _score(b'["ON_SITE"]', "Москва", phrase + "\n")
+    assert not r["passed_gate"]
+    assert r["reasons"] == ["офис/гибрид в другом городе (Москва), удалёнки нет"]
+
+
+# ...а эти удалёнку обещают: формат hh тогда, похоже, заполнен неточно — не режем,
+# остаётся штраф, решает владелец по карточке.
+@pytest.mark.parametrize("phrase", [
+    # hh 138489384
+    "ДМС, включающий стоматологию и страховку для выезжающих за рубеж. "
+    "Поддерживаем удаленный формат работы",
+    # hh 138795294, 137699257
+    "9 дней на прохождение; полностью удалённый формат и свободный график.",
+    # hh 128668048
+    "Через полгода можно работать полностью удаленно или из комфортного офиса в Москве; "
+    "гибкий график",
+])
+def test_text_promising_remote_keeps_penalty(phrase):
+    r = _score(b'["HYBRID"]', "Москва", phrase + "\n")
+    assert r["passed_gate"]
+    assert "офис/гибрид в другом городе РФ, удалёнки нет" in r["reasons"]
 
 
 def test_without_field_behaviour_unchanged():
