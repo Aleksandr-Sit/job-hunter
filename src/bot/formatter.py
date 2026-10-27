@@ -1,7 +1,9 @@
 """Форматирует вакансию + результат матчинга в Telegram HTML-сообщение."""
 import re
 
+from ..matcher.pre_filter import ai_tools_phrase
 from ..models import Job, MatchResult, salary_range
+from ..parsers.hh_enrich import schedule_summary
 
 _DIV = "─" * 22
 
@@ -38,6 +40,28 @@ def _meta_line(job: Job) -> str:
     return "  ·  ".join(parts)
 
 
+# Фраза-доказательство длиннее — режем: карточка не место для абзаца
+_AI_PHRASE_MAX = 160
+
+
+def _work_mode_lines(job: Job) -> str:
+    """График по полям hh и пометка про ИИ-инструменты — под строкой компании.
+
+    График (26.10.2026): владелец откликнулся в OsteoFace, не зная, что там 6/1, —
+    поле hh было, а в тексте и в карточке графика не было. ИИ-инструменты — цель
+    владельца расти в ИИ; фраза показывает, на чём основана пометка."""
+    lines = []
+    sched = schedule_summary(job.description)
+    if sched:
+        lines.append(f"🗓 График (hh): {_esc(sched)}")
+    phrase = ai_tools_phrase(job.description)
+    if phrase:
+        if len(phrase) > _AI_PHRASE_MAX:
+            phrase = phrase[:_AI_PHRASE_MAX].rsplit(" ", 1)[0] + "…"
+        lines.append(f"🤖 Ценят ИИ-инструменты: «{_esc(phrase)}»")
+    return "\n".join(lines)
+
+
 # Подписи ролей для карточки. Ролей в criteria.yaml семь; подписи были только у
 # трёх, и остальные показывались сырым ключом («aml_compliance») — ревизия 17.09.2026.
 _ROLE_LABELS = {
@@ -62,6 +86,9 @@ def _prefilter_line(job: Job) -> str:
 def format_job_message(job: Job, match: MatchResult) -> str:
     emoji = _score_emoji(match.score)
     meta = _meta_line(job)
+    mode = _work_mode_lines(job)
+    if mode:
+        meta = f"{meta}\n{mode}"
 
     fits = "\n".join(f"· {_esc(r)}" for r in match.why_fits[:4])
     fits_block = f"✅ <b>Почему подходит</b>\n{fits}" if fits else ""

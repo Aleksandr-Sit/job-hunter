@@ -184,6 +184,98 @@ _EXPLICIT_REMOTE = re.compile(
     re.IGNORECASE,
 )
 
+# ── 3a. Офис или гибрид в ДРУГОМ городе — жёсткий отсев ───────────────────────
+# Решение владельца 26.10.2026 (отменяет его же решение 25.09 «исключительный оффер
+# хочу видеть»): цель — удалёнка и свободный график под тренировки, переезжать в
+# другой город РФ ради офиса он не будет. Штраф −10 (`onsite_ru_city`) не держал
+# такие вакансии: AI ставил им 80+, и за 22.09–26.10 их ушло в Telegram 291 из 888 —
+# треть потока (замер data/scans/schedule_audit_2026-10-26.md).
+#
+# Режем только по ПОЛЮ формата hh (строка hh_enrich): слово «офис» в тексте ничего
+# не решает. Не режем: REMOTE среди форматов (в том числе «на месте, удалённо,
+# гибрид» сразу — 72 такие в наборе), Самару, страны релокации, пустую локацию
+# (там остаётся штраф) и текст, ЯВНО обещающий удалёнку.
+#
+# Обещание удалёнки — только без отрицания и без «частично»: в наборе 10 офисных
+# вакансий с такой фразой, и шесть из них её отрицают или сужают: «(не удаленный
+# формат)», «удаленный формат не предусмотрен!», «не предлагаем частичную, проектную
+# занятость, а так же удаленный формат работы», «1 день по выбору - удаленный формат»,
+# «Удаленная работа: опыт удаленной поддержки AnyDesk» (навык, а не формат).
+_REMOTE_CLAUSE_START = re.compile(r"[.;!?\n•·|()]")
+_REMOTE_NEG_LEFT = re.compile(r"\b(?:без|нет|не|никак\w*|no|not)\b")
+_REMOTE_PARTIAL_LEFT = re.compile(
+    r"частичн\w*|гибрид\w*|\b[1-4]\s*(?:дн|день|раз)\w*|partial\w*|hybrid")
+_REMOTE_NEG_RIGHT = re.compile(
+    r"^[^.;!?\n]{0,6}\s*(?:не\s+(?:предусмотрен|возмож|рассматрива|практику|предоставля)|"
+    r"невозмож|исключ|отсутству|нет\b|not\s+(?:possible|available|offered))")
+# «Удаленная работа: опыт удаленной поддержки» — заголовок навыка в требованиях
+_REMOTE_SKILL_RIGHT = re.compile(r"^\s*:\s*(?:опыт|навык|знани|умени|experience)")
+# «можно работать удаленно 1 день в неделю» — число дней СПРАВА, тоже гибрид
+_REMOTE_PARTIAL_RIGHT = re.compile(
+    r"^[^.;!?\n]{0,12}?\b[1-4]\s*(?:дн|день|раз\w*\s+в\s+недел)")
+# Обещания удалёнки, которых нет в общем `_EXPLICIT_REMOTE` (его же зовут
+# normalize.detect_remote и штраф зарубежного офиса — туда не добавлял, чтобы не
+# менять их поведение). Замер 27.10.2026 на наборе 888: без них ложно резались
+# Apyflow «работаем удалённо… Удалённо из любой точки», «Специалист по внедрению
+# ИИ» «возможность удаленного формата работы с командировками в Москву» и «Возможен
+# вариант удаленной работы, после испытательного срока». Голое «удалённо» не беру:
+# «решение инцидентов на месте и удаленно», «пользователей, работающих удалённо» —
+# обязанности, а не формат. Голое «удалёнка» тоже не беру: в наборе оно только в
+# гибриде («офис в Москве + удаленка», «пн-пт в офисе, сб-вс удаленка»). По просьбе
+# владельца 27.10 добавлены «перевод/переход на удалённую работу (удалёнку)»,
+# «возможна работа удалённо», «возможность работать из дома» — с «возмож…», чтобы не
+# ловить теги hh «работа из дома, офис, работа в офисе».
+_REMOTE_PROMISE_MORE = re.compile(
+    r"работаем\s+удал[её]нно|удал[её]нно\s+из\s+любой\s+точки|"
+    r"(?:можно|можешь|можете)\s+работать\s+(?:полностью\s+)?удал[её]нно|"
+    r"возмож\w*\s+(?:вариант\s+)?удал[её]нн\w*\s+(?:формат|работ)\w*|"
+    r"(?:перевод|переход)\w*\s+на\s+(?:удал[её]нн\w*\s+(?:работ|формат)\w*|удал[её]нк\w*)|"
+    r"возмож\w*\s+работ\w*\s+(?:удал[её]нно|из\s+дома)")
+
+
+def _remote_promised(blob: str) -> str | None:
+    """Фраза, которой текст ЯВНО обещает удалённый формат, или None.
+
+    `blob` в нижнем регистре. Слева смотрим только свою часть фразы (до 60
+    символов, до точки или скобки): отрицание дальше — уже про другое."""
+    hits = sorted([*_EXPLICIT_REMOTE.finditer(blob), *_REMOTE_PROMISE_MORE.finditer(blob)],
+                  key=lambda m: m.start())
+    for m in hits:
+        left = blob[max(0, m.start() - 60): m.start()]
+        cut = list(_REMOTE_CLAUSE_START.finditer(left))
+        left = left[cut[-1].end():] if cut else left
+        right = blob[m.end(): m.end() + 40]
+        if _REMOTE_NEG_LEFT.search(left) or _REMOTE_PARTIAL_LEFT.search(left):
+            continue
+        if (_REMOTE_NEG_RIGHT.search(right) or _REMOTE_SKILL_RIGHT.search(right)
+                or _REMOTE_PARTIAL_RIGHT.search(right)):
+            continue
+        return m.group(0)
+    return None
+
+
+def _office_elsewhere(blob: str) -> str | None:
+    """Город, если по полю hh вакансия только офисная/гибридная и не в Самаре.
+
+    None — не режем: формата hh нет (вакансия не дообогащена или не с hh), среди
+    форматов есть REMOTE, локации нет, локация — Самара или страна релокации,
+    либо текст явно обещает удалёнку."""
+    hh_fmt = _HH_WORK_FORMAT.search(blob)
+    if not hh_fmt:
+        return None
+    formats = set(re.findall(r"[a-z_]+", hh_fmt.group(1)))
+    if not formats or "remote" in formats:
+        return None
+    loc = re.search(r"location:\s*([^\n]+)", blob)
+    city = loc.group(1).strip() if loc else ""
+    if not city or _HOME_CITY.search(city):
+        return None
+    if _hits(CRITERIA["relocation_ok"], city)[0]:
+        return None
+    if _remote_promised(blob):
+        return None
+    return city
+
 # ── 3c. Требование СВОБОДНОГО английского ─────────────────────────────────────
 # У кандидата A1–A2. «Fluent/native English» в требованиях — такой же
 # недостижимый барьер, как паспорт ЕС: резюме и сопроводительное его не решают.
@@ -458,14 +550,120 @@ def _night_shift_mode(blob: str) -> str | None:
 
     'core'       — ночь штатный режим -> жёсткий отсев;
     'occasional' — считанные ночи в месяц -> штраф;
-    'shift'      — сменный график без ночей -> меньший штраф.
+    'shift'      — сменный график без ночей -> меньший штраф (а если смены —
+                   единственный режим, вакансию режет `_rigid_schedule`).
     """
     if _NIGHT_OCCASIONAL.search(blob):
         return "occasional"
     if any(not _night_negated(blob, m) for m in _NIGHT_CORE.finditer(blob)):
         return "core"
-    if _SHIFT_SCHEDULE.search(blob):
+    if any(not _shift_negated(blob, m) for m in _SHIFT_SCHEDULE.finditer(blob)):
         return "shift"
+    return None
+
+
+# Отрицание рядом со сменами — по образцу `_night_negated`: «без сменного графика»,
+# «не посменная работа», «сменного графика нет», «no shift work». До 26.10.2026 его
+# не было: отрицание давало −8, как сами смены. Голое «не» — только вплотную:
+# `_SHIFT_SCHEDULE` ловит «посменн» и внутри «НЕпосменная».
+_SHIFT_NEG_BEFORE = re.compile(
+    r"(?:\bбез|\bнет|\bне|\bникак\w*|\bno|\bnot|\bwithout|\bnever)\W{0,12}$",
+    re.IGNORECASE,
+)
+_SHIFT_NEG_AFTER = re.compile(
+    r"^\w*\W{0,12}(?:нет\b|не\s+предусмотрен\w*|отсутству\w*|исключен\w*|не\s+будет|"
+    r"не\s+требу\w*|not\s+required|is\s+not)",
+    re.IGNORECASE,
+)
+
+
+def _shift_negated(blob: str, match: re.Match) -> bool:
+    """True, если рядом со «сменным графиком» стоит отрицание."""
+    before = blob[max(0, match.start() - 30): match.start()]
+    after = blob[match.end(): match.end() + 30]
+    return bool(_SHIFT_NEG_BEFORE.search(before) or _SHIFT_NEG_AFTER.search(after))
+
+
+# ── 3b'. Сменный график как РЕЖИМ — жёсткий отсев ────────────────────────────
+# Решение владельца 26.10.2026: новая цель — свободный график под тренировки по
+# пляжному волейболу, поэтому смены, 6/1, 12-часовые и ночные смены режутся, а не
+# штрафуются −8. Штраф не держал: AI ставил таким 80+. За 22.09–26.10 таких
+# ушло в Telegram 41 из 888, и 24 из них были видны ТОЛЬКО в полях hh (строки
+# hh_enrich._schedule_note), в тексте — ни слова: OsteoFace 6/1, hh 137767979.
+#
+# Режем, если смены — единственный режим:
+#   - график hh непустой и весь из сменных (2/2, 3/3, 6/1, по выходным…);
+#   - часы hh непустые и только 10/11/12/24;
+#   - ночные смены по полю hh, а свободного графика или часов нет и выбора тоже нет.
+#     Выбор — 5/2 или 4/3 наряду со сменами: «2/2 или 5/2, смены по 6, 9 или 12 часов,
+#     доплата 50% за работу в ночь», «5/2, 2/2 в день, 2/2 в ночь». Ночь там — одна
+#     из опций; замер 27.10 на наборе 888: шесть из семи срезанных по полю были такими,
+#     а «5/2 или 2/2 на выбор» владелец велел не трогать;
+#   - графика hh нет (LinkedIn, ATS, Telegram) — фраза о сменах без отрицания и без
+#     альтернативы в тексте (5/2, пятидневка, гибкий/свободный график, flexible).
+# НЕ режем, если в графике hh есть 5/2, 4/3, свободный или «другой» наряду со
+# сменами — там остаётся штраф `shift_schedule`. Restik (hh 138178885): «сменный
+# график с 11:00 до 19:00», а в поле — «другой»; это дневная работа, она остаётся.
+#
+# Строки hh — коды в нижнем регистре: «график (hh): two_on_two_off».
+_HH_SCHEDULE = re.compile(r"график \(hh\):\s*([a-z0-9_, ]+)")
+_HH_HOURS = re.compile(r"часы в день \(hh\):\s*([a-z0-9_, ]+)")
+_HH_NIGHT = re.compile(r"работа ночью \(hh\):\s*да")
+_RIGID_DAYS = frozenset({
+    "two_on_two_off", "three_on_three_off", "four_on_four_off", "four_on_two_off",
+    "three_on_two_off", "two_on_one_off", "one_on_three_off", "one_on_two_off",
+    "six_on_one_off", "weekend",
+})
+_LONG_HOURS = frozenset({"hours_10", "hours_11", "hours_12", "hours_24"})
+_DAY_ALTERNATIVE = frozenset({"five_on_two_off", "four_on_three_off"})   # 5/2, 4/3
+_DAYS_LABEL = {
+    "two_on_two_off": "2/2", "three_on_three_off": "3/3", "four_on_four_off": "4/4",
+    "four_on_two_off": "4/2", "three_on_two_off": "3/2", "two_on_one_off": "2/1",
+    "one_on_three_off": "1/3", "one_on_two_off": "1/2", "six_on_one_off": "6/1",
+    "weekend": "по выходным",
+}
+# Альтернатива сменам в том же тексте: «график 5/2 или 2/2 на выбор», «сменный
+# или гибкий график». С ней вакансия не режется — остаётся штраф.
+# Диапазон будних дней — тоже пятидневка: «Shift schedule: Monday-Friday 9am-6pm»,
+# «Shift work: Sunday-Thursday» (рабочая неделя ОАЭ) — слово shift там про часы, а
+# не про сменный режим (проверено 27.10.2026 перед замером на батче).
+_WEEKDAY_RANGE = (
+    r"\b(?:monday|mon)\W{1,5}(?:to\W{1,3}|through\W{1,3})?(?:friday|fri)\b|"
+    r"\b(?:sunday|sun)\W{1,5}(?:to\W{1,3}|through\W{1,3})?(?:thursday|thu)\b|"
+    r"понедельник\w*\W{1,5}(?:по\W{1,3})?пятниц\w*|\bпн\W{1,3}пт\b|"
+    r"воскресень\w*\W{1,5}(?:по\W{1,3})?четверг\w*")
+_SHIFT_ALTERNATIVE = re.compile(
+    r"\b5\s*(?:/|х|x|на|через)\s*2\b|пятидневк\w*|пятидневн\w*|"
+    r"гибк\w*\s+(?:график|режим|начал|рабоч\w*\s+(?:день|врем|час))|"
+    r"свободн\w*\s+(?:график|режим)|\bflexib|" + _WEEKDAY_RANGE,
+    re.IGNORECASE,
+)
+
+
+def _hh_codes(rx: re.Pattern, blob: str) -> set[str]:
+    m = rx.search(blob)
+    return set(re.findall(r"[a-z0-9_]+", m.group(1))) if m else set()
+
+
+def _rigid_schedule(blob: str) -> str | None:
+    """Почему смены — единственный режим работы, или None (см. шапку раздела)."""
+    days = _hh_codes(_HH_SCHEDULE, blob)
+    hours = _hh_codes(_HH_HOURS, blob)
+    if days and days <= _RIGID_DAYS:
+        return "график hh " + ", ".join(sorted(_DAYS_LABEL[d] for d in days))
+    if hours and hours <= _LONG_HOURS:
+        return "смена hh " + ", ".join(sorted(h[6:] for h in hours)) + " ч"
+    day_choice = len(days) > 1 and bool(days & _DAY_ALTERNATIVE)
+    if _HH_NIGHT.search(blob) and "flexible" not in days | hours and not day_choice:
+        return "ночные смены по полю hh"
+    if days:
+        return None     # в графике hh есть 5/2, 4/3, свободный или «другой»
+    for m in _SHIFT_SCHEDULE.finditer(blob):
+        if _shift_negated(blob, m):
+            continue
+        if _SHIFT_ALTERNATIVE.search(blob):
+            return None
+        return f"«{m.group(0)}»"
     return None
 
 
@@ -568,6 +766,112 @@ def _cold_outreach(blob: str) -> str | None:
             continue
         if not _cold_negated(blob, m):
             return m.group(0)
+    return None
+
+
+# ── 3d. Работодатель ждёт, что сотрудник САМ пользуется ИИ ────────────────────
+# Решение владельца 26.10.2026: цель — расти в ИИ, поэтому вакансия, где ИИ —
+# рабочий инструмент сотрудника («используете ChatGPT и Claude в работе», «готовность
+# применять нейросети»), получает пометку в карточке и прибавку `ai_tools` (вес в
+# criteria.yaml; с 27.10.2026 — 0 по замеру: прибавка тащила к AI только чужие роли).
+# «Мы разрабатываем AI-платформу» (ИИ в продукте) и «опыт проектов AI/ML» (ИИ в
+# опыте) — не то: там ИИ — предмет работы, а не инструмент. В наборе 888 карточек
+# 22.09–26.10 первое — 123 вакансии, из них 57 не AI-ролей.
+#
+# Слово-инструмент + глагол использования в окне ±70 символов, а не «в предложении»:
+# в hh списки часто без точек, и предложение растягивается на весь блок обязанностей.
+# Логика — `ai_tools_phrase` из data/scans/schedule_audit_tools/sched_classify.py
+# (вид «tools»), проверена глазами на этом наборе.
+# «агент», но не «агентство»: «Команда AI-агентства GINAI ищет менеджера…» (hh
+# 137880718) получала пометку — ИИ там продукт агентства, а не инструмент сотрудника.
+_AI_WORD = re.compile(
+    r"(?:\b(?:ai|ии)\b[- ]?(?:инструмент|ассистент|сервис|агент(?!ств)|tool|решени)\w*|нейросет\w*|"
+    r"нейронн\w+\s+сет\w*|искусственн\w+\s+интеллект\w*|chat\s*gpt|\bgpt\b|claude|cursor|copilot|"
+    r"\bllm\b|генеративн\w+|\bai[- ]?(?:native|first)\b|промпт\w*|\bprompt\w*|deepseek|gigachat|"
+    r"гигачат|yandexgpt|perplexity|\b(?:ai|ии)\b)",
+    re.IGNORECASE,
+)
+_AI_USE = re.compile(
+    r"использ\w*|примен\w*|владе\w*|работ\w*\s+с\b|умее\w*|умени\w*|опыт\w*|интерес\w*|"
+    r"увлека\w*|люб\w*|знаком\w*|навык\w*|приветству\w*|плюс\w*|преимуществ\w*|ежедневн\w*|"
+    r"в\s+(?:своей\s+)?работе|ускор\w*|не\s+бо\w+|открыт\w*|готов\w*|\buse\b|\busing\b|"
+    r"leverag\w*|experience\s+with|comfortable",
+    re.IGNORECASE,
+)
+# «Мы / наша компания / платформа …» перед словом про ИИ — это про продукт
+_AI_SELF = re.compile(
+    r"\b(?:мы|наш\w*|компани\w*|продукт\w*|платформ\w*|разрабатыва\w*|создаём|создаем|we|our)\b",
+    re.IGNORECASE,
+)
+_AI_SELF_BUT_USE = re.compile(r"использ|примен|владе|интерес|умее|умени|навык", re.IGNORECASE)
+_AI_TOOL = re.compile(
+    r"(?:\b(?:ai|ии)\b[- ]?(?:инструмент|ассистент|сервис|агент(?!ств)|tool|помощник)\w*|нейросет\w*|"
+    r"chat\s*gpt|\bgpt\b|claude|cursor|copilot|deepseek|gigachat|гигачат|yandexgpt|perplexity|"
+    r"midjourney|промпт\w*|\bprompt\w*|"
+    r"(?:использ\w*|примен\w*|с\s+помощью|помощью|работ\w*\s+с)\s+(?:\w+\s+){0,2}(?:ai|ии)\b"
+    r"(?!-(?:продукт|платформ|сфер|ниш|направлен|рынк|стартап|компан|проект)))",
+    re.IGNORECASE,
+)
+# Хвост `(?!-продукт…)`: «работы с AI-продуктами» — это ИИ как товар, который
+# продают, а не инструмент. Набор 888 (27.10.2026): так помечались 5 вакансий продаж
+# ИИ-продуктов, а «навыки работы с генеративными AI-моделями» — пользование ИИ, остаётся.
+_AI_TOOL_USE = re.compile(
+    r"использ\w*|примен\w*|владе\w*|работ\w*\s+с\b|интерес\w*|готовн\w*|с\s+помощью|ежедневн\w*|"
+    r"в\s+(?:своей\s+)?работе|умени\w*|умее\w*|навык\w*|увлека\w*|\buse\b|\busing\b|leverag\w*|"
+    r"comfortable",
+    re.IGNORECASE,
+)
+_AI_CLAUSE_END = re.compile(r"[.;!?\n•·|]")
+_AI_WINDOW = 70      # окно решения — как в разборе 26.10.2026
+_AI_REACH = 100      # сколько фразы показывать в каждую сторону без точки
+
+
+def _clause_left(text: str, i: int) -> int:
+    lo = max(0, i - _AI_REACH)
+    ends = [m.end() for m in _AI_CLAUSE_END.finditer(text, lo, i)]
+    if ends:
+        return ends[-1]
+    if lo > 0 and text[lo - 1].isalnum():      # не начинать с огрызка слова
+        sp = text.find(" ", lo, i)
+        return sp + 1 if sp >= 0 else lo
+    return lo
+
+
+def _clause_right(text: str, i: int) -> int:
+    hi = min(len(text), i + _AI_REACH)
+    m = _AI_CLAUSE_END.search(text, i, hi)
+    if m:
+        return m.start()
+    if hi < len(text) and text[hi].isalnum():
+        sp = text.rfind(" ", i, hi)
+        return sp if sp >= 0 else hi
+    return hi
+
+
+def ai_tools_phrase(text: str | None) -> str | None:
+    """Фраза, по которой видно, что сотрудник сам пользуется ИИ, или None.
+
+    Решение — по окну ±70 символов вокруг слова про ИИ. Показывается фраза (до
+    точки или пункта списка) вокруг слова-инструмента и ближайшего к нему глагола
+    использования: «Используете в работе: • ChatGPT» — глагол в заголовке списка."""
+    text = text or ""
+    for w in _AI_WORD.finditer(text):
+        lo = max(0, w.start() - _AI_WINDOW)
+        hi = min(len(text), w.end() + _AI_WINDOW)
+        win = text[lo:hi]
+        if not _AI_USE.search(win):
+            continue
+        if (_AI_SELF.search(text[max(0, w.start() - 40):w.start()])
+                and not _AI_SELF_BUT_USE.search(win)):
+            continue
+        tool = _AI_TOOL.search(text, lo, hi)
+        uses = list(_AI_TOOL_USE.finditer(text, lo, hi))
+        if not (tool and uses):
+            continue
+        use = min(uses, key=lambda m: abs(m.start() - tool.start()))
+        a = min(_clause_left(text, tool.start()), _clause_left(text, use.start()))
+        b = max(_clause_right(text, tool.end()), _clause_right(text, use.end()))
+        return re.sub(r"\s+", " ", text[a:b]).strip(" ,;:-—–•·")
     return None
 
 
@@ -1102,6 +1406,14 @@ def _extra_hard_gates(title: str, text: str, role_key: str) -> str | None:
     if _night_shift_mode(blob) == "core":
         return "ночные смены как режим работы"
 
+    rigid = _rigid_schedule(blob)
+    if rigid:
+        return f"сменный график как режим: {rigid}"
+
+    city = _office_elsewhere(blob)
+    if city:
+        return f"офис/гибрид в другом городе ({city.title()}), удалёнки нет"
+
     cold = _cold_outreach(blob)
     if cold:
         return f"холодный поиск клиентов: «{cold}»"
@@ -1230,8 +1542,9 @@ def score_vacancy(title: str, text: str, role_key: str) -> dict:
     # Формат из ПОЛЯ hh главнее слов текста — так же, как workplace_type у ATS
     # (normalize.detect_remote). Строку кладёт hh_enrich, поэтому она есть у всех
     # дообогащённых вакансий, то есть у всех hh-вакансий, дошедших до отбора.
-    # Решение владельца 25.09.2026: удалёнка в приоритете, офис в ДРУГОМ городе РФ
-    # нежелателен, но исключительный оффер он хочет видеть — поэтому штраф, не отсев.
+    # С 26.10.2026 офис/гибрид в ДРУГОМ городе с известной локацией режет гейт
+    # `_office_elsewhere`. Сюда доходят: пустая локация и текст, явно обещающий
+    # удалёнку, — им остаётся штраф `onsite_ru_city`; и Самара — `onsite_home`.
     ru_office = None
     hh_fmt = _HH_WORK_FORMAT.search(blob)
     if hh_fmt:
@@ -1298,6 +1611,11 @@ def score_vacancy(title: str, text: str, role_key: str) -> dict:
     # Entry/junior/обучающие роли — целевой сегмент кандидата (низкий барьер)
     if _hits(CRITERIA.get("entry_boost", []), blob)[0]:
         score += _W["entry"]; reasons.append(f"+{_W['entry']} entry/junior (низкий барьер)")
+
+    # Сотрудник сам пользуется ИИ — по тексту описания, без заголовка (см. 3d)
+    add = _W.get("ai_tools", 0)
+    if add and ai_tools_phrase(text):
+        score += add; reasons.append(f"+{add} ценят ИИ-инструменты")
 
     # Смены. Ночь как режим сюда не доходит — она отсечена в hard gate выше.
     shift_mode = _night_shift_mode(blob)

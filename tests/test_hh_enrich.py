@@ -164,3 +164,101 @@ class TestByteAccounting:
             st = he.enrich([_job(vid=str(i)) for i in range(2)])
         assert st.downloaded == 1_600_000
         assert st.chars == 0
+
+
+def _fields(days=None, hours=None, night=None, formats=None) -> str:
+    """Поля страницы hh так, как они лежат в живой странице: JSON в атрибуте,
+    кавычки экранированы как `&#34;`."""
+    def arr(codes):
+        return "[" + ",".join(f"&#34;{c}&#34;" for c in codes) + "]"
+    parts = []
+    if days is not None:
+        parts.append(f"&#34;workScheduleByDays&#34;:{arr(days)}")
+    if hours is not None:
+        parts.append(f"&#34;workingHours&#34;:{arr(hours)}")
+    if night is not None:
+        parts.append(f"&#34;nightShifts&#34;:{'true' if night else 'false'}")
+    if formats is not None:
+        parts.append(f"&#34;workFormats&#34;:{arr(formats)}")
+    return '<div data-state="{' + ",".join(parts) + '}"></div>'
+
+
+class TestScheduleFields:
+    """График, часы и ночные смены — поля страницы hh (26.10.2026).
+
+    OsteoFace (hh 137767979): «График: 6/1» стоял только в поле, в тексте — ни
+    слова, и владелец откликнулся, не зная о шестидневке. Из 41 сменной вакансии,
+    ушедшей в Telegram за 22.09–26.10, 24 были видны ТОЛЬКО в полях страницы.
+    """
+
+    def test_flat_fields(self):
+        html = _fields(["SIX_ON_ONE_OFF"], ["HOURS_8", "FLEXIBLE"], False).encode()
+        assert he._schedule_note(html) == ("График (hh): SIX_ON_ONE_OFF\n"
+                                           "Часы в день (hh): HOURS_8, FLEXIBLE\n")
+
+    def test_nested_element_form(self):
+        html = (b"&#34;workScheduleByDays&#34;:[{&#34;workScheduleByDaysElement&#34;:"
+                b"[&#34;TWO_ON_TWO_OFF&#34;]}]")
+        assert he._schedule_note(html) == "График (hh): TWO_ON_TWO_OFF\n"
+
+    def test_dictionary_of_all_options_is_not_the_field(self):
+        # Справочник лежит под тем же ключом и перечисляет ВСЕ варианты: взять его —
+        # значит приписать вакансии и 6/1, и 2/2 разом.
+        html = (b"&#34;workScheduleByDays&#34;:[{&#34;id&#34;:&#34;SIX_ON_ONE_OFF&#34;,"
+                b"&#34;text&#34;:&#34;6/1&#34;}],"
+                b"&#34;workScheduleByDays&#34;:[&#34;FIVE_ON_TWO_OFF&#34;]")
+        assert he._schedule_note(html) == "График (hh): FIVE_ON_TWO_OFF\n"
+
+    def test_dictionary_alone_gives_nothing(self):
+        html = (b"&#34;workScheduleByDays&#34;:[{&#34;id&#34;:&#34;SIX_ON_ONE_OFF&#34;,"
+                b"&#34;text&#34;:&#34;6/1&#34;}]")
+        assert he._schedule_note(html) == ""
+
+    def test_empty_field_gives_nothing(self):
+        assert he._schedule_note(b'"workScheduleByDays":[],"workingHours":[]') == ""
+
+    def test_night_line_only_when_true(self):
+        # «нет» в описании ничего не добавляет, а место в начале описания дорого
+        assert he._schedule_note(_fields(night=True).encode()) == "Работа ночью (hh): да\n"
+        assert he._schedule_note(_fields(night=False).encode()) == ""
+
+    def test_page_without_fields(self):
+        assert he._schedule_note(b"<html>no fields</html>") == ""
+
+    def test_fetch_puts_schedule_lines_first(self):
+        # Порядок важен: за строкой «График (hh)» — строка hh, а не текст
+        # работодателя, иначе «…: OTHER\n2/2 …» дало бы ложную фразу смен.
+        html = (_fields(["TWO_ON_TWO_OFF"], ["HOURS_12"], True, ["REMOTE"])
+                + f'<div data-qa="vacancy-description">{FULL}</div>')
+        s = MagicMock(); s.get.return_value = _resp(html=html)
+        text, _, _ = he._fetch("https://hh.ru/vacancy/123", s)
+        assert text.startswith("График (hh): TWO_ON_TWO_OFF\n"
+                               "Часы в день (hh): HOURS_12\n"
+                               "Работа ночью (hh): да\n"
+                               "Формат работы (hh): REMOTE\n")
+        assert FULL[:40] in text
+
+
+class TestScheduleSummary:
+    """Подпись графика для карточки: владелец читает «6/1», а не SIX_ON_ONE_OFF."""
+
+    @staticmethod
+    def _desc(**kw) -> str:
+        return ("Регион: Москва\n" + he._schedule_note(_fields(**kw).encode())
+                + "Текст вакансии")
+
+    def test_six_day_week_with_hours(self):
+        desc = self._desc(days=["SIX_ON_ONE_OFF"], hours=["HOURS_8", "FLEXIBLE"])
+        assert he.schedule_summary(desc) == "6/1 · 8 ч или по договорённости"
+
+    def test_shifts_with_nights(self):
+        desc = self._desc(days=["TWO_ON_TWO_OFF"], hours=["HOURS_12"], night=True)
+        assert he.schedule_summary(desc) == "2/2 · 12 ч · есть ночные смены"
+
+    def test_several_options(self):
+        desc = self._desc(days=["FIVE_ON_TWO_OFF", "TWO_ON_TWO_OFF"])
+        assert he.schedule_summary(desc) == "5/2 или 2/2"
+
+    @pytest.mark.parametrize("desc", [None, "", "Вакансия с LinkedIn без полей hh"])
+    def test_no_fields_no_summary(self, desc):
+        assert he.schedule_summary(desc) == ""
