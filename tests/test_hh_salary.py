@@ -46,7 +46,7 @@ class TestCompensation:
     def test_upper_bound_gross(self):
         html = _page('{"to":75000,"currencyCode":"RUR","gross":true,"mode":"MONTH"}')
         assert he._compensation(html) == {"from": None, "to": 75000,
-                                          "currency": "RUB", "gross": True}
+                                          "currency": "RUB", "gross": True, "mode": "MONTH"}
 
     def test_range_net(self):
         html = _page('{"from":120000,"to":150000,"currencyCode":"RUR","gross":false}')

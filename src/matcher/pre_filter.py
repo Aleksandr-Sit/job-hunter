@@ -1735,6 +1735,95 @@ def dedupe_jobs(pairs: list) -> list:
     return split_duplicates(pairs)[0]
 
 
+# ── Направление 27.10.2026: продажи без ИИ-продукта и зарплата ниже пола ──────────
+# Цель владельца 26.10 — рост в ИИ и доход выше пола (criteria.yaml, direction_gate).
+# Продажи остаются, если ИИ или SaaS — продукт или сфера компании. Замер на 178
+# продажных карточках hh: «используете ИИ-инструменты», «опыт в SaaS будет плюсом»,
+# «внедряем AI» стояли у сантехники на Ozon, недвижимости, реагентов — это не продукт.
+_SALES_TITLE = re.compile(
+    r"продаж|\bsales\b|телемаркет|лидоген|business develop|бизнес-?девелоп|\bbd[mr]?\b"
+    r"|account executive|менеджер по привлечению")
+# «Менеджер по работе с клиентами (без продаж)», Sales Support — не продавец
+_NOT_SALES_TITLE = re.compile(
+    r"без продаж|не продаж|no sales|sales (?:support|operations|ops|coordinator|assistant)"
+    r"|поддержк\w* продаж|ассистент\w* (?:отдела )?продаж")
+# Продажа обучения — онлайн-школа, даже если курс про нейросети (решение 18.10)
+_COURSE_TITLE = re.compile(r"обучени|\bкурс|урок|образовани|диагностик")
+_AI_SAAS = re.compile(
+    r"искусственн\w* интеллект|нейросет|нейронн\w* сет|\bllm|chatgpt|\bgpt|claude|\bии\b|\bai\b"
+    r"|генеративн|машинн\w* обучени|machine learning|\bsaas\b|\biaas\b|\bpaas\b|\bcloud\b"
+    r"|облачн\w* (?:сервис|платформ|решени|продукт|по\b)"
+    # Собственный IT-продукт — запасное направление владельца (CSM/внедрение в IT-продуктах).
+    # Без этого срезались Minervasoft, YCLIENTS, Sellmonitor, Loyal Club: «SaaS» у них
+    # только в требованиях, а продукт назван «IT-сервис», «платформа», «наше ПО».
+    r"|\b(?:it|ит)[- ]?(?:продукт|сервис|решени|компани)|программн\w* продукт|\bsoftware\b"
+    r"|разработчик\w* (?:собственн|программ|решени|платформ|сервис|продукт)"
+    r"|разрабатываем (?:решени|продукт|платформ|сервис)|собственн\w* (?:платформ|сервис|продукт)"
+    r"|сервис\w* (?:аналитики|по подписанию)"
+    r"|платформ\w* для (?:бизнес|малого|компани|мониторинг|автоматизац)")
+# Слева в той же фразе — требование к кандидату или его инструмент, а не продукт.
+# «Аккредитованная IT-компания» — налоговый статус: так пишут телеком и банки.
+_AI_INCIDENTAL_BEFORE = re.compile(
+    r"опыт|experience|желательн|умени|умеешь|умеете|навык|знани|владе|использ|применя"
+    r"|работ\w* (?:с|в)\b|с помощью|внедряем|готовност|обучени|курс|аккредитованн")
+_AI_INCIDENTAL_AFTER = re.compile(r"^[\s-]*(?:инструмент|tools?\b|помощник|ассистент)")
+# SaaS-CRM — продукт только в заголовке («Менеджер по продажам amoCRM»); в описании
+# продаж это рабочий инструмент («ведение клиентов в Битрикс24») — замер 27.10
+# вернул по нему электрощитовое оборудование, франшизы и интернет-магазин.
+_SAAS_BRAND_TITLE = re.compile(r"amocrm|битрикс ?24|bitrix ?24")
+# Переменная часть дохода: при ней «до X» в поле hh — оклад, а не доход
+_VARIABLE_PAY = re.compile(
+    r"преми|бонус|\bkpi\b|\bкпи\b|процент\w* от|% от|\bот \d+ ?%|комисси\w* от|сдельн"
+    r"|переменн\w* част|систем\w* мотивац|мотивационн|не ограничен|без потолка|13-?(?:я|й) зарплат")
+_DIRECTION = CRITERIA.get("direction_gate", {})
+
+
+def _ai_product_mentioned(text: str) -> bool:
+    """True, если ИИ/SaaS в тексте — продукт или сфера, а не навык и не инструмент."""
+    for m in _AI_SAAS.finditer(text):
+        before = re.split(r"[.!?;\n•]", text[max(0, m.start() - 70): m.start()])[-1]
+        if _AI_INCIDENTAL_BEFORE.search(before) or _AI_INCIDENTAL_AFTER.search(text[m.end():]):
+            continue
+        return True
+    return False
+
+
+def _sales_without_ai_product(title: str, text: str) -> str | None:
+    t = _n(title)
+    if not _SALES_TITLE.search(t) or _NOT_SALES_TITLE.search(t):
+        return None
+    if _COURSE_TITLE.search(t):
+        return "продажа курсов/обучения"
+    if _AI_SAAS.search(t) or _SAAS_BRAND_TITLE.search(t) or _ai_product_mentioned(_n(text)):
+        return None
+    return "продажи без ИИ/SaaS/IT-продукта"
+
+
+def _salary_below_floor(job: Job) -> str | None:
+    floor = _DIRECTION.get("salary_floor_net_rub")
+    if not floor or job.salary_currency != "RUB" or not job.salary_max:
+        return None   # «от X» без верха не режем: оклад ≠ доход
+    if job.raw.get("salary_mode") not in (None, "MONTH"):
+        return None   # за смену / за час
+    top = job.salary_max * 0.87 if job.raw.get("salary_gross") else job.salary_max
+    if top >= floor or _VARIABLE_PAY.search(_n(job.description)):
+        return None
+    return f"верх зарплаты {int(top) // 1000}k на руки ниже {floor // 1000}k, премий нет"
+
+
+def direction_gate(job: Job) -> str | None:
+    """Причина отсева по направлению владельца или None. Для hh — только по полной
+    странице: в RSS-выжимке нет ни продукта компании, ни премий, и отказ по ней
+    был бы окончательным (такие отказы не дообогащаются)."""
+    if (job.source or "") == "hh.ru" and not job.raw.get("hh_full"):
+        return None
+    if _DIRECTION.get("sales_need_ai_product"):
+        reason = _sales_without_ai_product(job.title, job.description)
+        if reason:
+            return reason
+    return _salary_below_floor(job)
+
+
 def score_job(job: Job) -> dict:
     """Скорит вакансию по всем ролям из criteria.yaml, возвращает лучшую по баллу.
 
@@ -1750,6 +1839,12 @@ def score_job(job: Job) -> dict:
         results = [{"role": r, "passed_gate": False, "score": 0, "recommend": False,
                     "reasons": [f"{_BLOCKED_EMPLOYER_REASON}: {blocked}"]}
                    for r in CRITERIA["roles"]]
+        return {"best": results[0], "all": results}
+
+    direction = direction_gate(job)
+    if direction:
+        results = [{"role": r, "passed_gate": False, "score": 0, "recommend": False,
+                    "reasons": [direction]} for r in CRITERIA["roles"]]
         return {"best": results[0], "all": results}
 
     text = job.description

@@ -246,9 +246,12 @@ def _compensation(html: bytes) -> dict | None:
         return None
     cur = re.search(r'"currencyCode":"([A-Z]+)"', body)
     gross = re.search(r'"gross":(true|false)', body)
+    # MONTH / SHIFT / HOUR / FLY_IN_FLY_OUT: пол зарплаты (pre_filter) — только помесячно
+    mode = re.search(r'"mode":"([A-Z_]+)"', body)
     return {"from": lo, "to": hi,
             "currency": _CURRENCY.get(cur.group(1), cur.group(1)) if cur else "RUB",
-            "gross": None if not gross else gross.group(1) == "true"}
+            "gross": None if not gross else gross.group(1) == "true",
+            "mode": mode.group(1) if mode else None}
 
 
 def _apply_compensation(job: Job, comp: dict) -> None:
@@ -258,6 +261,8 @@ def _apply_compensation(job: Job, comp: dict) -> None:
     job.salary_currency = comp["currency"]
     if comp["gross"] is not None:
         job.raw["salary_gross"] = comp["gross"]
+    if comp.get("mode"):
+        job.raw["salary_mode"] = comp["mode"]
     tax = {True: ", до вычета налогов", False: ", на руки"}.get(comp["gross"], "")
     line = f"{SALARY_LABEL} {salary_range(comp['from'], comp['to'], sep=' ')} {comp['currency']}{tax}"
     desc, n = _RSS_SALARY_LINE.subn(line, job.description or "", count=1)
@@ -326,6 +331,8 @@ def enrich(jobs: Iterable[Job], limit: int = 120) -> EnrichStats:
             _apply_compensation(job, page[0])
         # Выжимку сохраняем: в ней регион (и зарплата, если со страницы не взялась).
         job.description = f"{job.description}\n{full}"[:MAX_DESCRIPTION_CHARS]
+        # Полный текст есть — правила направления (pre_filter.direction_gate) судят по нему
+        job.raw["hh_full"] = True
         stats.enriched += 1
 
     logger.info("HH дообогащение: %s", stats)
