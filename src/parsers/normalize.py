@@ -12,10 +12,11 @@
 from __future__ import annotations
 
 import html
+import re
 
 from bs4 import BeautifulSoup
 
-from ..models import MAX_DESCRIPTION_CHARS
+from ..models import _AI_HEAD_CHARS, _AI_TAIL_CHARS, MAX_DESCRIPTION_CHARS
 
 # Локация, которая сама говорит «удалённо» — тогда города в ней нет.
 _REMOTE_LOCATION_WORDS = (
@@ -142,6 +143,57 @@ def schedule_note(description: str | None) -> str:
     if mode == "shift":
         return "\nSchedule: rotating/shift work (no night shifts stated)."
     return ""
+
+
+# Что из выброшенной середины описания AI обязан увидеть: язык и право на работу.
+_HIDDEN_REQUIREMENT = re.compile(
+    r'english|английск|'
+    r'work\s+(?:permit|authori[sz]ation|visa)|right\s+to\s+work|eligible\s+to\s+work|'
+    r'citizen\w*|passport|гражданств\w*|разрешени\w*\s+на\s+работу',
+    re.IGNORECASE,
+)
+# Граница пункта требований. LinkedIn склеивает пункты списка без точек, поэтому
+# фрагмент дополнительно ограничен длиной.
+_FRAGMENT_BREAK = re.compile(r'[.!?;•·\n]')
+_FRAGMENT_SPAN = 120
+_MAX_FRAGMENTS = 3
+
+
+def hidden_requirements_note(description: str | None) -> str:
+    """Строки про язык и право на работу из СЕРЕДИНЫ описания — для промпта AI.
+
+    AI получает 700 символов с начала и 800 с конца (`_sample_description`), а
+    требования часто стоят посередине. Workster 29.10.2026: «Russian C1 and very
+    good English» на 960-м символе из 1817, и AI написал «уровень английского не
+    указан». В батче 18.10 упоминание английского было ТОЛЬКО в середине у 444 из
+    1276 вакансий LinkedIn и 246 из 1078 Greenhouse. Пересылать всё описание
+    дорого; пересылаем только эти фрагменты, как `schedule_note` — смены.
+    """
+    text = description or ""
+    if len(text) <= _AI_HEAD_CHARS + _AI_TAIL_CHARS:
+        return ""
+    lo, hi = _AI_HEAD_CHARS, len(text) - _AI_TAIL_CHARS
+    fragments: list[str] = []
+    covered = -1
+    for m in _HIDDEN_REQUIREMENT.finditer(text, lo, hi):
+        if m.start() < covered:          # уже внутри предыдущего фрагмента
+            continue
+        s = max(0, m.start() - _FRAGMENT_SPAN)
+        e = min(len(text), m.end() + _FRAGMENT_SPAN)
+        left = list(_FRAGMENT_BREAK.finditer(text, s, m.start()))
+        if left:
+            s = left[-1].end()
+        right = _FRAGMENT_BREAK.search(text, m.end(), e)
+        if right:
+            e = right.start()
+        fragments.append(" ".join(text[s:e].split()))
+        covered = e
+        if len(fragments) == _MAX_FRAGMENTS:
+            break
+    if not fragments:
+        return ""
+    quoted = " | ".join(f"«{f}»" for f in fragments)
+    return f"\nRequirements from the omitted middle of the description: {quoted}"
 
 
 def onsite_note(workplace_type: str | None) -> str:
