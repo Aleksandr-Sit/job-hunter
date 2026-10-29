@@ -1277,6 +1277,18 @@ def _hits(terms: list[str], text: str) -> tuple[int, list[str]]:
     return len(found), found
 
 
+def _title_strong_only(role: dict, title: str) -> bool:
+    """Сильная должность, которая ищется ТОЛЬКО в заголовке (`titles_strong_title`).
+
+    `titles_strong` смотрит весь текст, и «внедрение AI-решений» или «prompt
+    engineering» в описании продажной вакансии давали бы +40. Такие слова живут
+    отдельным списком: попадание в заголовок засчитывается и как должность, и
+    как ролевое слово гейта — «Промпт-инженер» без слова «автоматизация» в тексте
+    не должна падать с «нет ролевых ключевых слов» (29.10.2026).
+    """
+    return _hits(role.get("titles_strong_title", []), _n(title))[0] > 0
+
+
 def _required_hits(terms: list[str], text: str) -> tuple[int, list[str]]:
     """Как _hits, но фраза засчитывается, только если хоть одно её вхождение —
     требование, а не пометка «плюс» и не раздел «желательно».
@@ -1366,8 +1378,14 @@ def _extra_hard_gates(title: str, text: str, role_key: str) -> str | None:
     if title_tokens & _EXCLUDED_TITLE_WORDS:
         return "executive/dev/finance роль в заголовке"
 
-    if title_tokens & _DEV_TITLE_WORDS and not (title_tokens & _OPS_QA_TITLE_WORDS):
-        return "dev-роль без qa/ops/support контекста"
+    dev_words = title_tokens & _DEV_TITLE_WORDS
+    if dev_words and not (title_tokens & _OPS_QA_TITLE_WORDS):
+        # «Prompt Engineer» — должность из titles_strong_title, а не разработка.
+        # Только если engineer — единственное dev-слово: «Prompt Engineer / .NET
+        # Architect» и «Full-stack разработчик / Prompt Engineer» режутся как раньше.
+        if not (dev_words <= {"engineer"}
+                and _title_strong_only(CRITERIA["roles"][role_key], title)):
+            return "dev-роль без qa/ops/support контекста"
 
     if title_tokens & _FINANCE_TITLE_WORDS and not (title_tokens & {"web3", "crypto", "blockchain", "defi", "digital"}):
         return "финансовая роль без web3-контекста"
@@ -1454,7 +1472,7 @@ def passes_hard_gates(title: str, text: str, role_key: str) -> tuple[bool, list[
         return False, [extra_reason]
 
     n_role, _ = _hits(role["must_role"], blob)
-    if n_role == 0:
+    if n_role == 0 and not _title_strong_only(role, title):
         return False, ["нет ролевых ключевых слов (не та функция)"]
 
     if role.get("must_domain"):
@@ -1479,7 +1497,8 @@ def score_vacancy(title: str, text: str, role_key: str) -> dict:
     score = _W["gate_base"]
     reasons = []
 
-    title_is_strong = _hits(role["titles_strong"], blob)[0]
+    title_is_strong = (_hits(role["titles_strong"], blob)[0]
+                       or _title_strong_only(role, title))
     if title_is_strong:
         score += _W["title_strong"]; reasons.append("сильное совпадение по должности")
     elif _hits(role["titles_weak"], blob)[0]:
