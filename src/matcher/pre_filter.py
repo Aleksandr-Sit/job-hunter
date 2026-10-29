@@ -130,14 +130,25 @@ def _high_exp_required(blob: str) -> bool:
 _CITIZENSHIP_REQUIRED = re.compile(
     r'\b(eu passport|european passport|eu citizenship|eu citizen|'
     r'us citizen|green card|uk citizen|british passport|'
+    r'eu work permit|eu work authori[sz]ation|'
     r'гражданство ес|паспорт ес|гражданство сша)\b',
     re.IGNORECASE,
 )
 # «right/eligible/authorized to work in X» — дисквалифицирует, только если X не РФ
 # (иначе отсекли бы обычные российские вакансии «право работать в РФ»).
+#
+# «Valid full-time work AUTHORIZATION FOR Greece» (Workster, 29.10.2026), «non-EU
+# residents must have a valid work permit in Greece», «holder of a work permit for
+# Greece». Само «work permit for X» требованием не считаем: «we help with your work
+# permit in Cyprus» — это помощь с визой, плюс для кандидата. Нужен признак того,
+# что разрешение уже должно быть: valid / hold / holder of / must have.
 _RIGHT_TO_WORK = re.compile(
-    r'(?:right to work|eligible to work|authoriz(?:ed|ation) to work|legally able to work)'
-    r'\s+in\s+(?:the\s+)?([a-zа-я\s]{2,20})',
+    r'(?:right to work|eligible to work|authoriz(?:ed|ation) to work|legally able to work|'
+    r'(?:valid|hold|holds|holder\s+of|existing|current|possess\w*|already\s+have|must\s+have)'
+    r'\s+(?:a\s+|an\s+)?(?:[\w-]+\s+){0,3}?'
+    r'(?:work\s+(?:authori[sz]ation|permit)|residence\s+and\s+work\s+permit)'
+    r'(?:\s*/\s*right\s+to\s+work)?)'
+    r'\s+(?:in|for)\s+(?:the\s+)?([a-zа-я\s]{2,20})',
     re.IGNORECASE,
 )
 _NON_RF_JURISDICTION = re.compile(
@@ -321,6 +332,15 @@ _FLUENT_ENGLISH_REQUIRED = re.compile(
     # «You are COMFORTABLE IN ENGLISH, spoken and written» (Vision Compliance,
     # 14.08.2026) — требование через самочувствие, а не через уровень.
     r'(?:comfortable|confident|at\s+ease)\s+(?:\w+\s+){0,2}in\s+english\b|'
+    # «Russian C1 and VERY GOOD English» (Workster, Афины, 29.10.2026), «Good
+    # written and verbal English», «Good oral and written English is essential».
+    # Голого «good» в шаблонах выше не было. Между good и English — только слова
+    # про сам язык: «a good chance to learn English» — это не требование, а
+    # «English-speaking partners» — про клиентов, а не про уровень кандидата.
+    r'(?:very\s+)?good\s+'
+    r'(?:(?:spoken|written|verbal|oral|business|working|conversational|and|or|both|'
+    r'level|command|knowledge|understanding|proficiency|skills?|of|the|in)[\s,/&]+){0,5}'
+    r'english\b(?![\s-]*speak)|'
     r'свободный\s+английск|уровень\s+носителя|'
     # Уровень после слова «английский» пишут по-разному: «английский C1»,
     # «английский — B2», «английский язык: C1», «английский уровня B2», «английский
@@ -343,9 +363,6 @@ _SPOKEN_MARKERS = re.compile(
     r'устн\w*|разговорн\w*|переговор\w*|созвон\w*|звонк\w*',
     re.IGNORECASE,
 )
-# ЯВНЫЙ признак русскоязычного контура: роль обслуживает русскоговорящих. Отличать
-# от простого упоминания русского среди требуемых языков — иначе «Fluent in Russian
-# and English» в международной компании (Epson) считается RU-desk и гейт молчит.
 # Наш язык — продолжение перечисления, начатого сразу после него.
 # Только союз, НЕ запятая: «English, Georgian languages are preferred» (Epson) —
 # запятая начинает новую мысль о другом языке, а «Russian AND/OR Greek» (RONIN)
@@ -353,22 +370,9 @@ _SPOKEN_MARKERS = re.compile(
 _LIST_CONTINUATION = re.compile(r'^\s*(?:and\s*/?\s*or|and|or|или|и)\s+',
                                 re.IGNORECASE)
 
+# Упоминание русского/СНГ. Гейт английского его больше не читает (29.10.2026),
+# но им сортирует очередь LinkedIn title_triage — один источник правды.
 _RU_MENTION = re.compile(r'\brussian\w*|русск\w*|\bcis\b|\bснг\b', re.IGNORECASE)
-
-_RU_DESK_STRONG = re.compile(
-    r'russian[\s-]speak\w*|russian\s+speakers?|\bcis\b|russian\s+desk|'
-    r'russian[\s-]language\s+(?:support|desk|team)|'
-    r'русскоязычн\w*|русскоговорящ\w*|\bснг\b',
-    re.IGNORECASE,
-)
-
-# Английский и русский требуются вместе, одной фразой — это НЕ русскоязычный контур.
-_EN_AND_RU = re.compile(
-    r'(english\s*(?:,|and|&|/|или|и)\s*(?:\w+\s+){0,2}russian|'
-    r'russian\s*(?:,|and|&|/|или|и)\s*(?:\w+\s+){0,2}english|'
-    r'англ\w*\s*(?:,|и|/)\s*русск|русск\w*\s*(?:,|и|/)\s*англ)',
-    re.IGNORECASE,
-)
 
 # Уровень назван числом: B1/B2 — это «дотягиваемо и стоит посмотреть», в отличие
 # от размытого «fluent». C1/C2 остаются жёстким барьером (решение владельца
@@ -414,29 +418,17 @@ def _english_modality(blob: str) -> str | None:
     """Насколько жёстко вакансия требует английский: spoken / generic / written / None.
 
     Исключения (требования нет): (1) пометка «плюс» рядом; (2) требование в разделе
-    «желательно»; (3) вакансия русскоязычная/CIS — там английский обычно вторичен,
-    и решение об отклике кандидат принимает сам.
+    «желательно».
+
+    Русскоязычная вакансия исключением НЕ является (решение владельца 29.10.2026).
+    До этого «Russian-speaking» в тексте отключал проверку английского целиком: «там
+    английский вторичен, решение за кандидатом». Повод отменить — Workster (Афины):
+    «Russian-Speaking Sales Specialist», в требованиях «Russian C1 and very good
+    English», карточка ушла с баллом 80. Если работодатель требует английский
+    прямо, это требование и для русскоязычной роли. «English is a plus» и уровни
+    B/C по-прежнему не режутся (пометка плюса и штрафы ниже). Замер на батче 4838:
+    338 → 325, все тринадцать — с явным fluent/strong/good English.
     """
-    # Упоминание русского обычно означает русскоязычную команду — тогда английский
-    # вторичен и решение об отклике за кандидатом. НО если английский и русский
-    # требуются В ОДНОЙ фразе («Fluent in Russian and English»), это не
-    # русскоязычный контур, а требование обоих языков — исключение не применяем
-    # (найдено 14.08.2026 на вакансиях COLIBRIX ONE и Epson Middle East).
-    if _hits(CRITERIA["english_boost"], blob)[0]:
-        # Русский, сам помеченный как ПЛЮС, признаком русскоязычного контура не
-        # является. «Fluent written and spoken English; knowledge of Russian
-        # and/or Greek would be considered an advantage» (RONIN Europe,
-        # 14.08.2026) — здесь обязателен английский, а русский лишь желателен.
-        ru = [m for m in _RU_MENTION.finditer(blob)]
-        ru_only_optional = bool(ru) and all(
-            _mention_is_optional(blob, m.start(), m.end()) for m in ru)
-        # Явный RU-desk («russian speaking», «CIS», «русскоязычные клиенты») —
-        # исключение работает всегда. Иначе оно снимается, если английский и
-        # русский требуются ОДНОЙ фразой: это не русскоязычный контур, а
-        # требование обоих языков (COLIBRIX ONE, Epson — 14.08.2026).
-        if not ru_only_optional and (
-                _RU_DESK_STRONG.search(blob) or not _EN_AND_RU.search(blob)):
-            return None
     found: set[str] = set()
     for m in _FLUENT_ENGLISH_REQUIRED.finditer(blob):
         if _mention_is_optional(blob, m.start(), m.end()):
