@@ -272,6 +272,12 @@ class TestCitizenshipBarrier:
         "You must have the right to work in the EU",
         "Candidates should be eligible to work in the United Kingdom",
         "требуется гражданство ЕС",
+        # Workster (Афины, 29.10.2026) и формулировки из батча 18.10
+        "Valid full-time work authorization for Greece",
+        "Please note that non-EU residents must have a valid work permit in Greece",
+        "EU/Schengen-zone citizen, or holder of a work permit for Greece.",
+        "If you hold valid work authorization for Cyprus and are ready to jump in",
+        "valid EU Work Permit required",
     ])
     def test_barrier_detected(self, text):
         from src.matcher.pre_filter import _citizenship_barrier
@@ -283,6 +289,9 @@ class TestCitizenshipBarrier:
         "право работать в РФ",
         "we provide visa support and relocation assistance",
         "passport required for business trips",
+        # помощь с разрешением — плюс для кандидата, а не барьер
+        "we provide relocation support and help with your work permit in Cyprus",
+        "valid work permit in Russia required",
     ])
     def test_no_false_positive(self, text):
         from src.matcher.pre_filter import _citizenship_barrier
@@ -457,12 +466,41 @@ class TestFluentEnglishGate:
         from src.matcher.pre_filter import _fluent_english_required
         assert _fluent_english_required(text) is False
 
-    def test_russian_desk_not_gated(self):
-        """RU-desk: английский вторичен, решение об отклике — за кандидатом."""
+    def test_russian_desk_with_explicit_english_is_gated(self):
+        """С 29.10.2026 русскоязычная роль не отменяет явное требование английского
+        (до этого RU-desk отключал гейт целиком — Workster ушла с баллом 80)."""
         from src.matcher.pre_filter import _fluent_english_required
         t = ("russian speaking support specialist for our cis users. "
              "fluent in english and russian required.")
+        assert _fluent_english_required(t) is True
+
+    def test_russian_desk_with_english_as_plus_passes(self):
+        from src.matcher.pre_filter import _fluent_english_required
+        t = ("russian speaking support specialist for our cis users. "
+             "native russian required. english is a plus.")
         assert _fluent_english_required(t) is False
+
+    def test_workster_athens_is_gated(self):
+        """Живая вакансия 29.10.2026: «Russian C1 and very good English» и
+        «Valid full-time work authorization for Greece» — режется дважды."""
+        from src.matcher.pre_filter import (
+            _citizenship_barrier,
+            _fluent_english_required,
+            score_vacancy,
+        )
+        desc = ("Are you a sales professional speaking Russian with a passion for "
+                "digital marketing? What you'll be doing: Manage inbound leads and "
+                "identify new outbound sales opportunities. What we're looking for: "
+                "Russian C1 and very good English Previous experience in B2B sales "
+                "Strong communication, negotiation, and relationship-building skills "
+                "Valid full-time work authorization for Greece")
+        title = "Russian-Speaking Sales Specialist | Digital Advertising Solutions (B2B)"
+        blob = f"{title} {desc}".lower()
+        assert _fluent_english_required(blob) is True
+        assert _citizenship_barrier(blob) is True
+        res = score_vacancy(title, desc + "\nLocation: Athens, Attiki, Greece",
+                            "sales_remote")
+        assert res["passed_gate"] is False
 
     def test_remote_crypto_vacancy_now_blocked(self):
         from src.matcher.pre_filter import score_vacancy
@@ -777,6 +815,31 @@ class TestEnglishGateBatch14Aug:
         assert _fluent_english_required("English A2 is enough for this role.") is False
 
 
+class TestGoodEnglish:
+    """«Very good English» (Workster, 29.10.2026): голого «good» в шаблонах не было,
+    и требование не замечалось вовсе."""
+
+    @pytest.mark.parametrize("text", [
+        "Requirements: very good English, spoken and written.",
+        "Good written and verbal English communication skills.",
+        "Good oral and written English is essential.",
+        "Language: good English (client-facing).",
+    ])
+    def test_gated(self, text):
+        from src.matcher.pre_filter import _fluent_english_required
+        assert _fluent_english_required(text.lower()) is True
+
+    @pytest.mark.parametrize("text", [
+        "We offer a good chance to learn English and grow.",
+        "You will have good communication with English-speaking partners.",
+        "Good spoken English is an advantage.",
+        "Bonus points: experience with Python; good English.",
+    ])
+    def test_not_gated(self, text):
+        from src.matcher.pre_filter import _fluent_english_required
+        assert _fluent_english_required(text.lower()) is False
+
+
 class TestUnreadableScript:
     """Вакансия целиком на местном алфавите: требования «нужен язык» в тексте нет,
     оно самоочевидно для местного кандидата. TBC Capital (грузинский) проходила
@@ -849,10 +912,7 @@ class TestCefrBLevel:
         assert _english_modality(t) == "spoken"
 
     def test_high_score_vacancy_survives_the_penalty(self):
-        """Смысл правки: сильная вакансия доходит, но со штрафом в причинах.
-
-        NB: без RU-desk в тексте — «russian speaking team» включает отдельное
-        исключение, при котором английский не штрафуется вовсе."""
+        """Смысл правки: сильная вакансия доходит, но со штрафом в причинах."""
         from src.matcher.pre_filter import score_vacancy
         res = score_vacancy(
             "Technical Support Specialist",
@@ -864,8 +924,9 @@ class TestCefrBLevel:
         assert res["recommend"] is True
         assert any("B1" in r and "B2" in r for r in res["reasons"])
 
-    def test_ru_desk_still_removes_english_entirely(self):
-        """Русскоязычная команда — английский вторичен, штрафа нет вообще."""
+    def test_ru_desk_gets_the_same_b_level_penalty(self):
+        """С 29.10.2026 русскоязычная команда английский не снимает: B2 штрафуется
+        так же, как в любой вакансии, но и не режется — вакансия доходит."""
         from src.matcher.pre_filter import score_vacancy
         res = score_vacancy(
             "Technical Support Specialist",
@@ -874,7 +935,7 @@ class TestCefrBLevel:
             "web3_support",
         )
         assert res["recommend"] is True
-        assert not any("B1" in r and "B2" in r for r in res["reasons"])
+        assert any("B1" in r and "B2" in r for r in res["reasons"])
 
 
 class TestOptionalMarkerScope:
@@ -984,12 +1045,13 @@ class TestOptionalMarkerShape:
              "greek would be considered an advantage.")
         assert _fluent_english_required(t) is True
 
-    def test_real_ru_desk_still_disables_english_gate(self):
-        """Перелов: настоящая русскоязычная вакансия не должна начать резаться."""
+    def test_ru_desk_does_not_disable_english_gate(self):
+        """С 29.10.2026 «russian speaking» не отключает гейт: требование
+        английского прямым текстом действует и в русскоязычной роли."""
         from src.matcher.pre_filter import _fluent_english_required
         t = ("russian speaking support specialist for our cis users. "
              "fluent english required.")
-        assert _fluent_english_required(t) is False
+        assert _fluent_english_required(t) is True
 
 
 class TestUkrainianAndLanguageStems:
