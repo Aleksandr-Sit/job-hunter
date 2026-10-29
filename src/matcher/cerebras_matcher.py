@@ -391,11 +391,12 @@ def match_batch(jobs: list[Job], client: Optional[OpenAI] = None,
 
     model_name = provider.model
     profile_text = _build_profile_text()
-    # schedule_note читает ПОЛНОЕ описание: to_text() отдаёт только начало и конец,
-    # а требование про смены обычно стоит ровно в выброшенной середине.
-    from ..parsers.normalize import schedule_note
+    # Обе пометки читают ПОЛНОЕ описание: to_text() отдаёт только начало и конец,
+    # а смены, язык и право на работу часто стоят ровно в выброшенной середине.
+    from ..parsers.normalize import hidden_requirements_note, schedule_note
     jobs_text = "\n\n---\n\n".join(
-        f"JOB ID: {j.id}\n{j.to_text()}{schedule_note(j.description)}" for j in jobs)
+        f"JOB ID: {j.id}\n{j.to_text()}{schedule_note(j.description)}"
+        f"{hidden_requirements_note(j.description)}" for j in jobs)
 
     prompt = (
         f"CANDIDATE PROFILE:\n{profile_text}\n\n"

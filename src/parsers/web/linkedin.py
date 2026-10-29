@@ -158,6 +158,37 @@ def _clean(text: str) -> str:
     return _RE_WS.sub(" ", html.unescape(text or "")).strip()
 
 
+def _posting_text(body: str) -> str:
+    """Текст вакансии со страницы jobPosting: само описание + критерии, без обвязки.
+
+    Раньше брали текст всей страницы. Шапка («1 day ago Be among the first 25
+    applicants See who X has hired… Apply Save Report this job Direct message the
+    job poster…») и подвал («Show more Show less… Referrals increase your chances…»)
+    занимали ~600 из 1500 символов, которые видит AI (`_sample_description`: 700 с
+    начала и 800 с конца), — у 1252 из 1276 вакансий батча 18.10. У Workster
+    29.10.2026 из-за этого «Russian C1 and very good English» попало в выброшенную
+    середину, и AI написал «уровень английского не указан».
+
+    Критерии (Seniority level, Employment type, Industries) оставляем — это часть
+    вакансии. Разметка страницы поменялась и блока описания нет — берём всю страницу,
+    как раньше: лучше лишний текст, чем пустое описание.
+    """
+    start = body.find("show-more-less-html__markup")
+    if start < 0:
+        return _clean(_RE_TAG.sub(" ", body))
+    start = body.find(">", start) + 1
+    # Описание кончается кнопкой «Show more / Show less» или концом секции.
+    ends = [i for i in (body.find("<button", start), body.find("</section>", start))
+            if i >= 0]
+    parts = [body[start:min(ends) if ends else len(body)]]
+    crit = body.find("description__job-criteria-list")
+    if crit >= 0:
+        crit = body.find(">", crit) + 1
+        crit_end = body.find("</ul>", crit)
+        parts.append(body[crit:crit_end if crit_end >= 0 else len(body)])
+    return _clean(_RE_TAG.sub(" ", " ".join(parts)))
+
+
 class LinkedInParser(BaseParser):
     name = "linkedin"
 
@@ -318,7 +349,7 @@ class LinkedInParser(BaseParser):
 
     def _description(self, job_id: str) -> str:
         body = self._get(_POSTING + job_id)
-        return _clean(_RE_TAG.sub(" ", body)) if body else ""
+        return _posting_text(body) if body else ""
 
     # ── Основной проход ───────────────────────────────────────────────────────
     def parse(self) -> list[Job]:

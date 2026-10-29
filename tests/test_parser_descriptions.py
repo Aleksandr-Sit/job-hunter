@@ -176,3 +176,83 @@ class TestCryptoJobsList:
                              "jobPostingJSONLD": '{"description": "Full text from JSONLD"}'})
         assert job.description == "Full text from JSONLD"
         assert p._session.calls == [], "лишний запрос к странице"
+
+
+_LI_POSTING = (
+    '<section class="top-card-layout"><h2>Russian-Speaking Sales Specialist</h2>'
+    '<span>Athens, Attiki, Greece</span><span>1 day ago</span>'
+    '<span>Be among the first 25 applicants</span> Apply Save Report this job</section>'
+    '<div class="message-the-recruiter">Direct message the job poster from Workster</div>'
+    '<div class="description__text description__text--rich">'
+    '<section class="show-more-less-html" data-max-lines="5">'
+    '<div class="show-more-less-html__markup show-more-less-html__markup--clamp-after-5">'
+    "<p>Are you a sales professional speaking Russian?</p>"
+    "<ul><li>Russian C1 and very good English</li>"
+    "<li>Valid full-time work authorization for Greece</li></ul></div>"
+    '<button class="show-more-less-html__button">Show more Show less</button>'
+    "</section></div>"
+    '<ul class="description__job-criteria-list"><li><h3>Seniority level</h3>'
+    "<span>Associate</span></li></ul>"
+    '<div class="find-a-referral">Referrals increase your chances of interviewing '
+    "at Workster by 2x See who you know</div>"
+)
+
+
+class TestLinkedInPostingText:
+    """Workster 29.10.2026: шапка и подвал страницы съедали ~600 из 1500 символов,
+    которые видит AI, и требование английского выпало из его куска."""
+
+    def test_keeps_description_and_criteria(self):
+        from src.parsers.web.linkedin import _posting_text
+        text = _posting_text(_LI_POSTING)
+        assert text.startswith("Are you a sales professional")
+        assert "Russian C1 and very good English" in text
+        assert "work authorization for Greece" in text
+        assert "Seniority level Associate" in text
+
+    def test_drops_page_chrome(self):
+        from src.parsers.web.linkedin import _posting_text
+        text = _posting_text(_LI_POSTING)
+        for junk in ("Be among the first", "Report this job", "Direct message",
+                     "Show more", "Referrals increase", "See who you know"):
+            assert junk not in text, junk
+
+    def test_unknown_markup_falls_back_to_whole_page(self):
+        """Разметка поменялась — лучше лишний текст, чем пустое описание."""
+        from src.parsers.web.linkedin import _posting_text
+        text = _posting_text("<div><p>Support role.</p><p>Fluent English.</p></div>")
+        assert text == "Support role. Fluent English."
+
+
+class TestHiddenRequirementsNote:
+    """AI видит 700 символов с начала и 800 с конца. Строки про язык и право на
+    работу из середины доносятся отдельной пометкой, как смены в schedule_note."""
+
+    def test_english_from_the_middle_reaches_the_prompt(self):
+        from src.models import _sample_description
+        from src.parsers.normalize import hidden_requirements_note
+        desc = ("Duties. " * 110 + "What we're looking for: Russian C1 and very "
+                "good English. " + "Benefits. " * 100)
+        assert "very good english" not in _sample_description(desc).lower(), \
+            "тест потерял смысл: фраза должна быть в выброшенной середине"
+        note = hidden_requirements_note(desc)
+        assert "Russian C1 and very good English" in note
+
+    def test_work_permit_from_the_middle(self):
+        from src.parsers.normalize import hidden_requirements_note
+        desc = ("Duties. " * 110 + "Valid work permit for Greece. " + "Benefits. " * 100)
+        assert "work permit for Greece" in hidden_requirements_note(desc)
+
+    def test_no_note_when_nothing_is_hidden(self):
+        from src.parsers.normalize import hidden_requirements_note
+        assert hidden_requirements_note("Fluent English. Short listing.") == ""
+        assert hidden_requirements_note(None) == ""
+        # английский в начале — AI его и так видит
+        desc = "Fluent English required. " + "Duties. " * 300
+        assert hidden_requirements_note(desc) == ""
+
+    def test_fragments_are_capped(self):
+        from src.parsers.normalize import hidden_requirements_note
+        desc = "x. " * 300 + "English needed. " * 60 + "y. " * 300
+        note = hidden_requirements_note(desc)
+        assert note.count("«") == 3
