@@ -53,29 +53,127 @@ _VACANCY_MARKERS = ("ваканси", "hiring", "ищем", "требу", "we ar
 _TITLE_STRIP = re.compile(r'^[\W_]+', re.UNICODE)
 
 
+# Зарплата в посте — только число, рядом с которым деньги: знак валюты вплотную
+# или слово «зарплата / оклад / доход» в той же строке. Раньше бралось ЛЮБОЕ первое
+# число текста. @workingincrypto начинает каждый пост с номера вакансии («2655
+# #Вакансия …»), и 29.10.2026 все 17 свежих вакансий канала шли в карточку и в AI
+# как «от 2655 USD», а настоящая зарплата терялась. Заодно ловились «100k+ member
+# community», «1,500+ have visited» и «$4,000 – $6,000» превращалось в «от 4000».
+_CUR = r"(?:\$|€|₽|usdt|usdc|usd|eur|руб\w*|rub\b)"
+_CUR_BEFORE = re.compile(_CUR + r"\s?$", re.IGNORECASE)
+_CUR_AFTER = re.compile(r"^\s?\+?\s?(" + _CUR + r")", re.IGNORECASE)
+# Число: «180 000», «1,000», «4.5», «2655» + множитель («k», «тыс», «т.р.»).
+# «M / млн / B» — оценки и инвестиции («привлекла $350M+»), не зарплата.
+_SAL_NUM = re.compile(
+    r"(?<![\w.,])(\d{1,3}(?:[ \u00a0\u202f,.]\d{3})+|\d+(?:[.,]\d{1,2})?)"
+    r"(?:\s?(k|к|тыс\w*\.?|т\.\s?р\.?|млн|млрд|mln|bn|m|b)(?![a-zа-яё]))?(?!\d)",
+    re.IGNORECASE)
+_RANGE_GAP = re.compile(
+    r"\s*(?:" + _CUR + r"\.?)?\s*\+?\s*(?:[-–—~]|до|to)\s*(?:" + _CUR + r"|~)?\s*",
+    re.IGNORECASE)
+_SALARY_WORD = re.compile(
+    r"зарплат|з/п|\bзп\b|оклад|доход(?!н)|оплат[аы]\b|вознагражден|salary|earnings",
+    re.IGNORECASE)
+# Строка со знаком денег, но без слова «зарплата»: берём, только если она похожа
+# на строку зарплаты («$4,000 – $6,000 / month | Remote») и не про чужие деньги.
+_NOT_SALARY = re.compile(
+    r"бюджет|оборот|привлек|инвест|raised|funding|\btvl\b|\bacv\b|сделк|\bdeals?\b"
+    r"|актив|\bassets\b|капитал|депозит|deposit|volume|объ[её]м|выручк|revenue|\bgmv\b"
+    r"|фонд|\bfund|prize|приз|грант|grant|\bчек\b|\bmrr\b|\barr\b|valuation",
+    re.IGNORECASE)
+_PAY_PERIOD = re.compile(
+    r"/\s?(?:мес|month|mo\b|год|year|yr|час|hour)|в месяц|в год|per (?:month|year|annum)"
+    r"|monthly|\bnet\b|\bgross\b|гросс|на руки",
+    re.IGNORECASE)
+_SHORT_LINE = 80
+
+
+def _currency_code(marker: str) -> str:
+    m = marker.lower()
+    if m in ("€", "eur"):
+        return "EUR"
+    if m == "₽" or m.startswith("руб") or m == "rub":
+        return "RUB"
+    return "USD"
+
+
+def _salary_tokens(line: str) -> list[dict]:
+    """Числа строки: значение, валюта рядом (или None), был ли множитель k/тыс."""
+    tokens = []
+    for m in _SAL_NUM.finditer(line):
+        raw, suffix = m.group(1), (m.group(2) or "").lower()
+        if suffix and suffix[0] in "mbм":          # m, b, bn, mln, млн, млрд
+            continue
+        digits = re.sub(r"[ \u00a0\u202f]", "", raw)
+        if re.fullmatch(r"\d{1,3}(?:[,.]\d{3})+", digits):
+            digits = re.sub(r"[,.]", "", digits)
+        value = float(digits.replace(",", "."))
+        if suffix:
+            value *= 1000
+        cur = None
+        before = _CUR_BEFORE.search(line[:m.start()])
+        after = _CUR_AFTER.search(line[m.end():])
+        if before:
+            cur = _currency_code(before.group(0).strip())
+        elif after:
+            cur = _currency_code(after.group(1))
+        tokens.append({"start": m.start(), "end": m.end(), "value": value,
+                       "cur": cur, "mult": bool(suffix), "plain": raw.isdigit()})
+    return tokens
+
+
+def _year_like(token: dict) -> bool:
+    """«Доход за 2025 год» — год, а не сумма (без диапазона и знака денег)."""
+    return token["plain"] and 1990 <= token["value"] <= 2100
+
+
+def _range_at(line: str, tokens: list[dict], i: int) -> tuple[float, Optional[float]]:
+    """Число i и, если за ним диапазон («– $6,000», «до 5,000»), верх диапазона."""
+    lo, hi = tokens[i], None
+    if i + 1 < len(tokens):
+        nxt = tokens[i + 1]
+        if _RANGE_GAP.fullmatch(line[lo["end"]:nxt["start"]]):
+            hi = nxt
+    lo_v = lo["value"]
+    if hi is None:
+        return lo_v, None
+    hi_v = hi["value"]
+    if hi["mult"] and not lo["mult"] and lo_v < 1000 and lo_v * 1000 <= hi_v:
+        lo_v *= 1000                                # «2-3k USDT» → 2000–3000
+    return lo_v, (hi_v if hi_v > lo_v else None)
+
+
 def _extract_salary(text: str) -> tuple[Optional[int], Optional[int], str]:
-    currency = "RUB" if ("руб" in text.lower() or "₽" in text) else "USD"
-    nums = re.findall(r'\d[\d\s,.]*(?:k|тыс)?', text, re.IGNORECASE)
-    values = []
-    for n in nums[:2]:
-        n = n.strip().replace(" ", "").replace(",", "")
-        if n.lower().endswith("k"):
-            try:
-                values.append(int(float(n[:-1]) * 1000))
-            except ValueError:
-                pass
+    """Первая строка поста, где есть зарплата, → (от, до, валюта)."""
+    default_cur = "RUB" if ("руб" in text.lower() or "₽" in text) else "USD"
+    for line in text.split("\n"):
+        tokens = _salary_tokens(line)
+        if not tokens:
+            continue
+        money = [i for i, t in enumerate(tokens) if t["cur"] and 50 <= t["value"] <= 50_000_000]
+        salary_word = _SALARY_WORD.search(line)
+        if money and (salary_word or (
+                not _NOT_SALARY.search(line)
+                and (len(line.strip()) <= _SHORT_LINE or _PAY_PERIOD.search(line)))):
+            i = money[0]
+            cur = tokens[i]["cur"]
+            # «от 1400 до 2200 USDT», «2-3k USDT»: валюта только у верха диапазона
+            if i > 0 and tokens[i - 1]["cur"] is None and _RANGE_GAP.fullmatch(
+                    line[tokens[i - 1]["end"]:tokens[i]["start"]]):
+                i -= 1
+        elif salary_word:
+            # «Доход в диапазоне 1300–2000» — валюты нет, число без знака денег
+            bare = [i for i, t in enumerate(tokens)
+                    if 500 <= t["value"] <= 50_000_000
+                    and not (_year_like(t) and _range_at(line, tokens, i)[1] is None)]
+            if not bare:
+                continue
+            i, cur = bare[0], default_cur
         else:
-            try:
-                v = int(n)
-                if 500 <= v <= 50_000_000:   # отсеиваем мусор
-                    values.append(v)
-            except ValueError:
-                pass
-    if len(values) >= 2:
-        return min(values), max(values), currency
-    if len(values) == 1:
-        return values[0], None, currency
-    return None, None, currency
+            continue
+        lo, hi = _range_at(line, tokens, i)
+        return int(round(lo)), (int(round(hi)) if hi else None), cur
+    return None, None, default_cur
 
 
 def _clean_title(line: str) -> str:
