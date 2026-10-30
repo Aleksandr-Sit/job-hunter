@@ -74,6 +74,35 @@ def test_not_cold_outreach(phrase):
     assert _cold_outreach(phrase.lower()) is None, phrase
 
 
+# Холодные звонки как ПРЕДМЕТ автоматизации — задача AI-интегратора, а не обязанность
+# звонить (Helios, hh 138760519: срезан 28.10.2026, без отсева 84 в ai_automation).
+@pytest.mark.parametrize("phrase", [
+    "- ИИ-менеджер продаж в WhatsApp и голосовой ИИ для холодных звонков; подсказки менеджерам",
+    "внедрить голосового робота для холодных звонков",
+    "ИИ-агент для холодных рассылок по базе",
+    "чат-бот для холодных рассылок в Telegram",
+    "автоматизация холодных звонков и рассылок",
+    "автоматизируем холодный обзвон с помощью n8n",
+    "build an AI voice agent for cold calling",
+    "automate cold outreach with n8n and Make",
+])
+def test_cold_outreach_as_automation_object(phrase):
+    assert _cold_outreach(phrase.lower()) is None, phrase
+
+
+# Граница исключения: машина рядом есть, но звонит человек — отсев остаётся.
+@pytest.mark.parametrize("phrase", [
+    "используете ИИ для холодных звонков и переписки с клиентами",
+    "ищем агентов для холодных звонков",
+    "ищем ассистента для холодных звонков",
+    "работа на автоматизированном обзвоне, холодные звонки",
+    "бот для холодных рассылок готов, ваша задача — 50 холодных звонков в день",
+    "use our AI-powered dialer for cold calls",
+])
+def test_cold_outreach_with_machine_nearby_still_detected(phrase):
+    assert _cold_outreach(phrase.lower()), phrase
+
+
 SALES = ("Менеджер по продажам. Удалённо. CRM, B2B, финтех, платежи. "
          "Обязанности: холодные звонки, 50 звонков в день.")
 
