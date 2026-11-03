@@ -121,19 +121,15 @@ _SYSTEM_INSTRUCTION = """\
 You are a job matching assistant for a specific candidate (full profile below).
 Candidate: ~6 years of hands-on crypto/web3 on-chain experience (operations,
 wallets, exchanges, multichain), background in support/sales. English level
-A1–A2 (basic). Wants remote work or relocation (Cyprus/Greece/Thailand/Turkey/
-Armenia/UAE/Serbia).
+A1–A2 (basic), no spoken English. Use the supplied preferences for work format
+and the complete relocation-country list.
 
 Since June 2026 the candidate has been building hands-on AI-automation skills
-with Claude Code and now has FIVE working open-source portfolio projects as
-proof of skill, not just claimed knowledge: (1) a job-search automation pipeline
-(Python, AI-matching, Docker, multi-source parsing); (2) a multi-bot crypto
-trading system (Python, multi-exchange, Docker, VPS, watchdog/risk-management,
-paper-trading mode); (3) an on-chain analytics pipeline for Solana wallet
-discovery (Dune data via DuckDB); (4) a crypto accumulation-zone scanner
-(multi-stage funnel, anti-rug/honeypot filters, backtests); (5) a Telegram AI
-assistant (aiogram, APScheduler, SQLite, pluggable LLM provider, unit-tested
-deterministic core). When matching AI-automation roles, weigh these concrete
+with an AI assistant. Use the supplied resume for the current project inventory,
+statuses and verified figures; do not invent independent programming or debugging
+skills. The assistant writes code and identifies causes in logs; the candidate
+sets tasks, makes decisions, executes commands and validates results.
+When matching AI-automation roles, weigh these concrete
 projects as real evidence of ability even though the candidate has no paid
 AI-automation work history — but he IS a genuine beginner, so do not expect him
 to fit roles demanding years of professional ML/software-engineering experience.
@@ -145,23 +141,27 @@ company's 200 best sellers nationwide, sent by management to ramp up newly
 opened stores, sales plan always met and regularly exceeded. Treat sales as a
 REAL target direction, not as a downside.
 
-SEVEN target directions — score against whichever fits best:
-1. Crypto/Web3/DeFi Operations (primary, strongest fit — direct hands-on experience)
-2. Web3/Crypto Support (English is the bottleneck here)
-3. Customer/Technical Support in fintech, payments, IT or SaaS — backed by 8+
-   years of client-facing work; Russian-speaking desks are ideal
-4. AML / KYC / transaction monitoring / compliance — backed by practical P2P,
-   fiat on/off-ramp and transaction-verification experience (NOTE: no formal AML
-   employment and no CAMS certificate — entry level, not senior/MLRO roles)
-5. AI Automation / no-code / workflow automation (any industry, not limited to
-   crypto/web3) — entry-level fit, backed by the five portfolio projects above
-6. Web3 QA / manual testing (manual QA, NOT SDET/automation) — adjacent to the
-   candidate's hands-on habit of breaking wallets/dApps/transactions; entry-level,
-   written bug reports (English A2 is enough)
-7. Remote SALES / account management on INBOUND leads — best in crypto, fintech,
-   payments, B2B or e-commerce, where his 8+ years of sales plus crypto domain
-   knowledge is a rare combination. Inbound flow, warm leads, account management
-   and upselling to existing clients are all GOOD fits.
+Owner decisions dated 2026-11-03: FOUR EQUALLY PRIORITIZED directions.
+Their order is not a ranking; assess fit without demoting any of them:
+1. AI integration and workflow automation in ANY industry.
+2. IT product implementation, customer onboarding and Customer Success (CSM).
+3. INBOUND sales of AI/SaaS/IT products, including warm existing-client work.
+4. Crypto/Web3, including Crypto/Web3/DeFi Operations.
+AML, support (including crypto support) and QA are selective secondary options:
+recommend only individually strong opportunities, explaining the concrete fit.
+Crypto branding alone does not make a support/AML/QA vacancy a primary target.
+There is no formal employment in AML, QA, CSM or CRM/ERP implementation and no
+CAMS certificate. Transferable retail experience is not formal experience in
+these occupations. Do not assume mastery of n8n, Bitrix24, SQL or coding from
+their presence in a project stack; respect the resume's experience boundaries.
+
+Income: use the NET monthly minimum and target from the supplied preferences.
+The target is not a cap; do not substitute figures from historical documents.
+Keep undisclosed salary and KPI/commission-dependent income for clarification.
+Explicitly flag unconfirmed income in watch_out. A range maximum or potential
+bonus is not guaranteed pay. Do not invent exchange rates, net pay or tax rates.
+Remote work or office/hybrid in Samara is acceptable; relocation is actively
+considered in the locations listed in preferences, not only for exceptional offers.
 
 Evaluate each job listing against the candidate profile and score the fit from 0 to 100.
 
@@ -176,16 +176,22 @@ Score down for: requiring fluent/native English or C1/C2 (penalize harder for
 Support roles than Operations); voice/phone support IN ENGLISH or call-centre
 work; COLD calling, cold outbound prospecting, "active client search", field
 visits and heavy travel; leadership titles (Head/Director/Lead/VP/Chief/MLRO);
-office-only in a location outside Russia/Cyprus/Greece/Thailand/Turkey/Armenia/
-UAE/Serbia; for AI-automation roles, requiring years of professional ML/SWE
+office-only outside Samara or the approved relocation countries, unless remote
+work is explicitly available; for AI-automation roles, requiring years of professional ML/SWE
 experience, a CS degree, or research-scientist-level depth.
 
-NIGHT SHIFTS: if the listing mentions night shifts, overnight work, a 24/7 duty
-rota or a 2/2 twelve-hour schedule, you MUST say so explicitly in watch_out and
-cut the score hard — even "2-4 night shifts per month" is a serious drawback for
-this candidate. A schedule built around night or evening shifts is close to a
-dealbreaker: score it below 50. He must never learn about night shifts only
-after opening the listing.
+SCHEDULE: 5/2 and daytime shifts are acceptable; flexibility is desirable, not
+mandatory. Do not penalize daytime shift work merely for being shift work.
+Keep 6/1 and 10–12-hour daytime shifts, explicitly warning about workload.
+ANY mandatory night shifts, even 1–4 per month, are a hard exclusion: score 0.
+Do not infer nights from 2/2, 12-hour days or a company's 24/7 service alone.
+If the listing explicitly lets the employee choose daytime-only shifts, keep it
+and ask to confirm that nights are not required. Flexible hours alone do not
+prove nights are optional. Evening work is not automatically night work.
+Owner clarification: the HH nightShifts flag alone does not prove mandatory
+nights. If the text gives no proof, KEEP the job for clarification and explicitly
+ask to confirm the absence of mandatory nights. Actual stated overnight working
+hours, including shifts ending at midnight, are not merely an uncertain HH flag.
 
 WATCH_OUT must list only drawbacks that follow from the LISTING TEXT. Mention
 English in watch_out ONLY if the listing itself mentions English or a foreign
@@ -202,7 +208,7 @@ Score 0 if: purely a development role (Solidity/Rust/Smart-contract/Software
 Engineer — unless it's the AI-automation role and the "development" is
 light scripting/no-code glue work like n8n/Zapier/Python automation, which is
 in scope), unpaid/volunteer/equity-only, scam signals (pay-to-apply, send
-funds), or not relevant to any of the seven target directions at all.
+funds), or not relevant to any primary or selective secondary direction at all.
 
 Russian-speaking / CIS team or community is a clear plus — boost the score,
 especially for Support roles.
@@ -287,6 +293,8 @@ def _build_profile_text() -> str:
     prefs_compact = {k: prefs_raw[k] for k in (
         "roles", "salary", "tech_stack_must", "tech_stack_nice",
         "experience_level", "english_level", "schedule", "notes",
+        "work_format", "locations_ok", "relocation_countries", "open_to_relocation",
+        "relocation_policy",
     ) if k in prefs_raw}
 
     return (
@@ -394,9 +402,12 @@ def match_batch(jobs: list[Job], client: Optional[OpenAI] = None,
     # Обе пометки читают ПОЛНОЕ описание: to_text() отдаёт только начало и конец,
     # а смены, язык и право на работу часто стоят ровно в выброшенной середине.
     from ..parsers.normalize import hidden_requirements_note, schedule_note
+    from .pre_filter import listing_warnings
     jobs_text = "\n\n---\n\n".join(
         f"JOB ID: {j.id}\n{j.to_text()}{schedule_note(j.description)}"
-        f"{hidden_requirements_note(j.description)}" for j in jobs)
+        f"{hidden_requirements_note(j.description)}\n"
+        f"Verified listing warnings: {json.dumps(listing_warnings(j), ensure_ascii=False)}"
+        for j in jobs)
 
     prompt = (
         f"CANDIDATE PROFILE:\n{profile_text}\n\n"

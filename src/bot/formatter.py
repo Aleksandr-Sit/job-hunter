@@ -1,7 +1,7 @@
 """Форматирует вакансию + результат матчинга в Telegram HTML-сообщение."""
 import re
 
-from ..matcher.pre_filter import ai_tools_phrase
+from ..matcher.pre_filter import ai_tools_phrase, listing_warnings
 from ..models import Job, MatchResult, salary_range
 from ..parsers.hh_enrich import schedule_summary
 
@@ -70,7 +70,7 @@ _ROLE_LABELS = {
     "ai_automation": "AI Automation",
     "qa_web3": "Web3 QA",
     "aml_compliance": "AML / Комплаенс",
-    "support_fintech": "Поддержка (финтех/IT)",
+    "support_fintech": "CSM / Внедрение / Поддержка (IT)",
     "sales_remote": "Продажи удалённо",
 }
 
@@ -93,7 +93,11 @@ def format_job_message(job: Job, match: MatchResult) -> str:
     fits = "\n".join(f"· {_esc(r)}" for r in match.why_fits[:4])
     fits_block = f"✅ <b>Почему подходит</b>\n{fits}" if fits else ""
 
-    watch = "\n".join(f"· {_esc(r)}" for r in match.watch_out[:2])
+    # Обязательные пометки не должны зависеть от дисциплины LLM или теряться
+    # за первыми двумя пунктами ответа (решения владельца 03.11.2026).
+    required = listing_warnings(job)
+    watch_items = required + [r for r in match.watch_out[:2] if r not in required]
+    watch = "\n".join(f"· {_esc(r)}" for r in watch_items)
     watch_block = f"⚠️ <b>Учесть</b>\n{watch}" if watch else ""
 
     sections = [s for s in [fits_block, watch_block] if s]

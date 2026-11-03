@@ -10,6 +10,27 @@ from ..models import Job
 
 _PROFILE_DIR = Path(__file__).parent.parent.parent / "config" / "profile"
 _CRITERIA_FILE = Path(__file__).parent.parent.parent / "config" / "criteria.yaml"
+_HH_AREAS_FILE = _CRITERIA_FILE.with_name("hh_relocation_areas.json")
+
+
+@lru_cache(maxsize=1)
+def _hh_country_map() -> dict[str, str]:
+    """Проверенный справочник HH, без сети. Неоднозначные названия не угадываем."""
+    try:
+        data = json.loads(_HH_AREAS_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    ambiguous = set(data.get("ambiguous_names", []))
+    return {a["name"].casefold(): country["name"]
+            for country in data.get("countries", []) for a in country["areas"]
+            if a["name"].casefold() not in ambiguous}
+
+
+def _relocation_location(location: str) -> bool:
+    if _hits(CRITERIA["relocation_ok"], location)[0]:
+        return True
+    country = _hh_country_map().get(location.strip().casefold())
+    return bool(country and _hits(CRITERIA["relocation_ok"], _n(country))[0])
 
 # ── 1. Должности, исключаемые по заголовку ────────────────────────────────────
 # Только однозначные executive/founder-роли — это никогда не подходит кандидату.
@@ -281,7 +302,7 @@ def _office_elsewhere(blob: str) -> str | None:
     city = loc.group(1).strip() if loc else ""
     if not city or _HOME_CITY.search(city):
         return None
-    if _hits(CRITERIA["relocation_ok"], city)[0]:
+    if _relocation_location(city):
         return None
     if _remote_promised(blob):
         return None
@@ -478,8 +499,8 @@ def _fluent_english_required(blob: str) -> bool:
 
 
 # ── 3b. Ночные смены и сменный график ─────────────────────────────────────────
-# Решение владельца 19.08.2026: ночные смены как РЕЖИМ работы — жёсткий отсев,
-# редкие ночи и сменный график — штраф. Поводом стали две вакансии, приехавшие
+# Решение владельца 03.11.2026 заменяет правило 19.08: любые обязательные ночи
+# отсекаются, дневные смены допустимы без штрафа. Первоначальный повод:
 # 19.08: «Специалист поддержки» Контура («вечерние или ночные смены») и
 # «PSP Support Agent» SOFTSWISS («2/2 shift schedule, 2–4 night shifts per month»).
 
@@ -528,13 +549,20 @@ _NIGHT_NEG_AFTER = re.compile(
     r"^\w*\W{0,12}(?:нет|не\s+предусмотрен\w*|отсутству\w*|исключен\w*|не\s+будет)",
     re.IGNORECASE,
 )
+_NIGHT_OPTIONAL_BEFORE = re.compile(
+    r"(?:по\s+(?:согласованию|желанию)\s+(?:возможн\w*\s+)?|"
+    r"добровольн\w*\s+|optional\s*)$", re.IGNORECASE)
 
 
 def _night_negated(blob: str, match: re.Match) -> bool:
     """True, если рядом с «ночными сменами» стоит отрицание."""
     before = blob[max(0, match.start() - 30): match.start()]
+    # Квалификатор частоты не отменяет отрицания: «no occasional night shifts».
+    before = re.sub(r"(?:occasional\w*|редк\w*|иногда)\s*$", "", before)
+    before = re.sub(r"\d{1,2}\s*[-–—]?\s*\d{0,2}\s*$", "", before)
     after = blob[match.end(): match.end() + 30]
-    return bool(_NIGHT_NEG_BEFORE.search(before) or _NIGHT_NEG_AFTER.search(after))
+    return bool(_NIGHT_NEG_BEFORE.search(before) or _NIGHT_NEG_AFTER.search(after)
+                or _NIGHT_OPTIONAL_BEFORE.search(before))
 
 
 def _night_shift_mode(blob: str) -> str | None:
@@ -542,12 +570,13 @@ def _night_shift_mode(blob: str) -> str | None:
 
     'core'       — ночь штатный режим -> жёсткий отсев;
     'occasional' — считанные ночи в месяц -> штраф;
-    'shift'      — сменный график без ночей -> меньший штраф (а если смены —
-                   единственный режим, вакансию режет `_rigid_schedule`).
+    'shift'      — сменный график без ночей; допустим без штрафа (03.11.2026).
     """
-    if _NIGHT_OCCASIONAL.search(blob):
+    if any(not _night_negated(blob, m) for m in _NIGHT_OCCASIONAL.finditer(blob)):
         return "occasional"
     if any(not _night_negated(blob, m) for m in _NIGHT_CORE.finditer(blob)):
+        return "core"
+    if _night_clock_phrase(blob):
         return "core"
     if any(not _shift_negated(blob, m) for m in _SHIFT_SCHEDULE.finditer(blob)):
         return "shift"
@@ -576,7 +605,9 @@ def _shift_negated(blob: str, match: re.Match) -> bool:
     return bool(_SHIFT_NEG_BEFORE.search(before) or _SHIFT_NEG_AFTER.search(after))
 
 
-# ── 3b'. Сменный график как РЕЖИМ — жёсткий отсев ────────────────────────────
+# ── 3b'. Поля графика hh ────────────────────────────────────────────────────
+# Ниже история правила 26.10, заменённого решением 03.11.2026: дневные смены,
+# 6/1 и 10–12 часов разрешены; обязательные ночи по-прежнему отсекаются.
 # Решение владельца 26.10.2026: новая цель — свободный график под тренировки по
 # пляжному волейболу, поэтому смены, 6/1, 12-часовые и ночные смены режутся, а не
 # штрафуются −8. Штраф не держал: AI ставил таким 80+. За 22.09–26.10 таких
@@ -638,25 +669,71 @@ def _hh_codes(rx: re.Pattern, blob: str) -> set[str]:
 
 
 def _rigid_schedule(blob: str) -> str | None:
-    """Почему смены — единственный режим работы, или None (см. шапку раздела)."""
+    """Суточная смена доказывает ночь; один nightShifts=true — нет.
+
+    03.11.2026: дневные смены, 6/1 и 10–12 часов разрешены. Гибкие часы
+    сами по себе не доказывают возможность отказаться от ночей.
+    """
+    hours = _hh_codes(_HH_HOURS, blob)
+    if hours == {"hours_24"}:
+        return "суточная смена hh 24 ч (включает ночь)"
+    return None
+
+
+_SHIFT_CLOCK = re.compile(
+    r"\b(?P<start>[01]?\d|2[0-3])[:.](?P<sm>[0-5]\d)\s*"
+    r"(?:до|[-–—])\s*(?P<end>[01]?\d|2[0-4])[:.](?P<em>[0-5]\d)\b")
+_CLOCK_CONTEXT = re.compile(r"смен\w*|график\w*|рабоч\w*\s+(?:час|врем)|shift|schedule|working hours")
+_OPTIONAL_NIGHT_CLOCK = re.compile(
+    r"по\s+(?:согласованию|желанию)\s+(?:возможн\w*\s+)?(?:смежн\w*\s+)?"
+    r"(?:ночн\w*\s+смен\w*|смен\w*\s+день\s*/\s*ночь)")
+
+
+def _night_clock_phrase(blob: str) -> str | None:
+    """Явное расписание с работой после полуночи, а не просто слово «вечер»."""
+    for m in _SHIFT_CLOCK.finditer(blob):
+        context = blob[max(0, m.start() - 100):m.end() + 40]
+        if not _CLOCK_CONTEXT.search(context):
+            continue
+        start = int(m["start"]) * 60 + int(m["sm"])
+        end = (int(m["end"]) % 24) * 60 + int(m["em"])
+        if (start < 6 * 60 or end < start) and not _OPTIONAL_NIGHT_CLOCK.search(context):
+            return m.group(0)
+    return None
+
+
+# Ночь можно не брать только при ЯВНОМ выборе дневных смен. Обычный «5/2»,
+# «гибкий график» или смешанный справочник hh такой гарантией не являются.
+_DAYTIME_CHOICE = re.compile(
+    r"(?:можно|можете|возможн\w*)\s+(?:выбрать|выбират\w*)\s+"
+    r"(?:только\s+)?(?:дневн\w*\s+смен\w*|дн[её]м)|"
+    r"(?:можно|можете)\s+работать\s+только\s+дн[её]м|"
+    r"(?:дневн\w*\s+(?:или\s+ночн\w*\s+)?смен\w*).{0,30}на\s+выбор|"
+    r"(?:day(?:time)?\s+(?:or\s+night\s+)?shifts?).{0,25}(?:your\s+choice|optional)",
+    re.IGNORECASE,
+)
+
+
+def schedule_warnings(text: str) -> list[str]:
+    """Предупреждения по полной вакансии, в том числе по полям hh."""
+    blob = _n(text)
+    notes = []
     days = _hh_codes(_HH_SCHEDULE, blob)
     hours = _hh_codes(_HH_HOURS, blob)
-    if days and days <= _RIGID_DAYS:
-        return "график hh " + ", ".join(sorted(_DAYS_LABEL[d] for d in days))
-    if hours and hours <= _LONG_HOURS:
-        return "смена hh " + ", ".join(sorted(h[6:] for h in hours)) + " ч"
-    day_choice = len(days) > 1 and bool(days & _DAY_ALTERNATIVE)
-    if _HH_NIGHT.search(blob) and "flexible" not in days | hours and not day_choice:
-        return "ночные смены по полю hh"
-    if days:
-        return None     # в графике hh есть 5/2, 4/3, свободный или «другой»
-    for m in _SHIFT_SCHEDULE.finditer(blob):
-        if _shift_negated(blob, m):
-            continue
-        if _SHIFT_ALTERNATIVE.search(blob):
-            return None
-        return f"«{m.group(0)}»"
-    return None
+    if "six_on_one_off" in days or re.search(r"(?:график|режим)\D{0,20}6\s*/\s*1\b", blob):
+        notes.append("График 6/1: высокая нагрузка, уточнить выходные и гибкость.")
+    if hours & {"hours_10", "hours_11", "hours_12"} or re.search(
+        r"(?:10|11|12)[ -]?(?:часов\w*|hour)[ -]?(?:смен\w*|shifts?)|"
+        r"(?:смен\w*|shifts?)\D{0,12}(?:10|11|12)\s*(?:час|hours?)", blob
+    ):
+        notes.append("Смены по 10–12 часов: уточнить нагрузку и время окончания.")
+    if _HH_NIGHT.search(blob):
+        notes.append("HH указывает ночные смены: подтвердить отсутствие обязательных ночей.")
+    elif _OPTIONAL_NIGHT_CLOCK.search(blob):
+        notes.append("Есть ночные смены по согласованию: подтвердить отсутствие обязательных ночей.")
+    elif _night_shift_mode(blob) in {"core", "occasional"} and _DAYTIME_CHOICE.search(blob):
+        notes.append("Есть ночные смены как опция: подтвердить отсутствие обязательных ночей.")
+    return notes
 
 
 # ── 3c. Холодный поиск клиентов ───────────────────────────────────────────────
@@ -1265,7 +1342,11 @@ def _prefilter_version() -> str:
     # отпечатке правка `industries_avoid` не переоткрывала прошлые отказы —
     # вакансии, отсеянные старым списком, не возвращались (ревизия 17.09.2026).
     avoid = "|".join(sorted(AVOID_KW))
-    blob = criteria + source + avoid
+    try:
+        geography = _HH_AREAS_FILE.read_text(encoding="utf-8")
+    except OSError:
+        geography = ""
+    blob = criteria + source + avoid + geography
     return hashlib.md5(blob.encode("utf-8")).hexdigest()[:12]
 
 
@@ -1431,12 +1512,12 @@ def _extra_hard_gates(title: str, text: str, role_key: str) -> str | None:
         what = "разговорный" if modality == "spoken" else "свободный"
         return f"требуется {what} английский (у кандидата A1–A2)"
 
-    if _night_shift_mode(blob) == "core":
-        return "ночные смены как режим работы"
+    if _night_shift_mode(blob) in {"core", "occasional"} and not _DAYTIME_CHOICE.search(blob):
+        return "обязательные ночные смены (включая редкие)"
 
     rigid = _rigid_schedule(blob)
     if rigid:
-        return f"сменный график как режим: {rigid}"
+        return f"обязательные ночные смены: {rigid}"
 
     city = _office_elsewhere(blob)
     if city:
@@ -1561,9 +1642,11 @@ def score_vacancy(title: str, text: str, role_key: str) -> dict:
     # считается — оно встречается в «remote troubleshooting», «remote access».
     loc_match = re.search(r"location:\s*([^\n]+)", blob)
     loc_line = loc_match.group(1) if loc_match else ""
+    if _relocation_location(loc_line):
+        reloc = True
     foreign_office = False
     if loc_match and not _EXPLICIT_REMOTE.search(blob):
-        if not _RU_LOCATION.search(loc_line) and not _hits(CRITERIA["relocation_ok"], loc_line)[0]:
+        if not _RU_LOCATION.search(loc_line) and not _relocation_location(loc_line):
             remote = False   # поле локации перевешивает «remote» из текста
             onsite = True
             foreign_office = True
@@ -1582,7 +1665,7 @@ def score_vacancy(title: str, text: str, role_key: str) -> dict:
             remote, onsite = True, False
         else:
             remote = False
-            if not foreign_office and not _hits(CRITERIA["relocation_ok"], loc_line)[0]:
+            if not foreign_office and not _relocation_location(loc_line):
                 onsite = False   # штраф ниже свой, не «офис за рубежом» −30
                 ru_office = "home" if _HOME_CITY.search(loc_line) else "city"
 
@@ -1646,17 +1729,13 @@ def score_vacancy(title: str, text: str, role_key: str) -> dict:
     if add and ai_tools_phrase(text):
         score += add; reasons.append(f"+{add} ценят ИИ-инструменты")
 
-    # Смены. Ночь как режим сюда не доходит — она отсечена в hard gate выше.
+    # Ночи отсечены гейтом. Дневные смены допустимы без штрафа (03.11.2026).
     shift_mode = _night_shift_mode(blob)
-    if shift_mode == "occasional":
-        sub = _W.get("night_shift_occasional", -15)
+    if shift_mode == "shift":
+        sub = _W.get("shift_schedule", 0)
         score += sub
-        reasons.append(f"{sub} редкие ночные смены (владелец их не хочет, "
-                       f"но при сильной вакансии решает сам)")
-    elif shift_mode == "shift":
-        sub = _W.get("shift_schedule", -8)
-        score += sub
-        reasons.append(f"{sub} сменный график")
+        if sub:
+            reasons.append(f"{sub} сменный график")
 
     score = max(0, min(100, score))
     return {
@@ -1802,7 +1881,8 @@ _AI_INCIDENTAL_AFTER = re.compile(r"^[\s-]*(?:инструмент|tools?\b|по
 _SAAS_BRAND_TITLE = re.compile(r"amocrm|битрикс ?24|bitrix ?24")
 # Переменная часть дохода: при ней «до X» в поле hh — оклад, а не доход
 _VARIABLE_PAY = re.compile(
-    r"преми|бонус|\bkpi\b|\bкпи\b|процент\w* от|% от|\bот \d+ ?%|комисси\w* от|сдельн"
+    r"преми|бонус|\bkpi\b|\bкпи\b|\bcommissions?\b|\bbonus(?:es)?\b|\bvariable pay\b|"
+    r"процент\w* от|% от|\bот \d+ ?%|комисси\w* от|сдельн"
     r"|переменн\w* част|систем\w* мотивац|мотивационн|не ограничен|без потолка|13-?(?:я|й) зарплат")
 _DIRECTION = CRITERIA.get("direction_gate", {})
 
@@ -1838,6 +1918,17 @@ def _salary_below_floor(job: Job) -> str | None:
     if top >= floor or _VARIABLE_PAY.search(_n(job.description)):
         return None
     return f"верх зарплаты {int(top) // 1000}k на руки ниже {floor // 1000}k, премий нет"
+
+
+def listing_warnings(job: Job) -> list[str]:
+    """Обязательные пометки по полной вакансии, независимо от ответа AI."""
+    notes = []
+    if not job.salary_min and not job.salary_max:
+        notes.append("Доход не подтверждён: зарплата не указана, уточнить условия оплаты.")
+    elif _VARIABLE_PAY.search(_n(job.description)):
+        notes.append("Доход не подтверждён: есть KPI/премии/проценты, уточнить гарантированный оклад и итоговую оплату.")
+    notes.extend(schedule_warnings(job.description))
+    return notes
 
 
 def direction_gate(job: Job) -> str | None:

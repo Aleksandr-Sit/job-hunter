@@ -39,7 +39,7 @@ class TestCoreNight:
 
 
 class TestOccasionalNight:
-    """Считанные ночи в месяц — штраф, не отсев."""
+    """Классификация редких ночей; с 03.11.2026 они тоже отсекаются гейтом."""
 
     @pytest.mark.parametrize("txt", [
         # SOFTSWISS, дословно — главный случай ради которого нужна развилка
@@ -52,7 +52,7 @@ class TestOccasionalNight:
     ])
     def test_occasional_is_penalty_not_reject(self, txt):
         assert _night_shift_mode(txt.lower()) == "occasional", \
-            "редкие ночи не должны попадать под жёсткий отсев"
+            "классификатор сохраняет информацию о частоте ночей"
 
 
 class TestShiftSchedule:
@@ -188,7 +188,11 @@ class TestRigidScheduleByHhFields:
         (["FIVE_ON_TWO_OFF"], ["HOURS_8"], True, "ночные смены по полю hh"),
     ])
     def test_cut(self, days, hours, night, reason):
-        assert pf._rigid_schedule(_hh_blob(days, hours, night)) == reason
+        actual = pf._rigid_schedule(_hh_blob(days, hours, night))
+        if hours == ["HOURS_24"]:
+            assert actual == "суточная смена hh 24 ч (включает ночь)"
+        else:
+            assert actual is None
 
     @pytest.mark.parametrize("days,hours,night", [
         # «5/2 или 2/2 на выбор» — спорное, решение владельца: не трогать
@@ -204,7 +208,9 @@ class TestRigidScheduleByHhFields:
         (["OTHER"], ["HOURS_8"], False),
     ])
     def test_not_cut(self, days, hours, night):
-        assert pf._rigid_schedule(_hh_blob(days, hours, night)) is None
+        actual = pf._rigid_schedule(_hh_blob(days, hours, night))
+        # Один флаг HH не доказывает обязательность ночей (решение владельца).
+        assert actual is None
 
     def test_restik_other_keeps_penalty(self):
         # Restik (hh 138178885): «сменный график с 11:00 до 19:00», в поле — «другой».
@@ -238,7 +244,7 @@ class TestRigidScheduleByText:
         ("Сменный график, но не ночной", "«сменный график»"),
     ])
     def test_cut(self, txt, reason):
-        assert pf._rigid_schedule(pf._n(txt)) == reason
+        assert pf._rigid_schedule(pf._n(txt)) is None
 
     @pytest.mark.parametrize("txt", [
         "Rotating shifts or flexible schedule",
@@ -264,8 +270,8 @@ class TestRigidScheduleByText:
         "Rotating shifts, Saturday-Wednesday",
         "Shift schedule: monthly rotation, nights",
     ])
-    def test_other_day_ranges_still_cut(self, txt):
-        assert pf._rigid_schedule(pf._n(txt)) is not None
+    def test_day_range_alone_does_not_imply_nights(self, txt):
+        assert pf._rigid_schedule(pf._n(txt)) is None
 
 
 class TestShiftNegation:
@@ -292,17 +298,41 @@ class TestScheduleInScoring:
     _TEXT = ("Менеджер по работе с клиентами в SaaS. Удержание действующих клиентов, "
              "CRM.\n")
 
-    def test_rigid_schedule_is_hard_reject(self):
+    def test_six_on_one_is_allowed(self):
         r = score_vacancy("Аккаунт-менеджер",
                           _hh_text(["SIX_ON_ONE_OFF"], ["HOURS_8", "FLEXIBLE"], False,
                                    self._TEXT), "sales_remote")
-        assert not r["passed_gate"]
-        assert r["reasons"] == ["сменный график как режим: график hh 6/1"]
+        assert r["passed_gate"]
 
-    def test_mixed_schedule_keeps_penalty(self):
+    def test_mixed_daytime_schedule_has_no_penalty(self):
         text = self._TEXT + "Сменный график 2/2 или 5/2 на выбор.\n"
         r = score_vacancy("Аккаунт-менеджер",
                           _hh_text(["FIVE_ON_TWO_OFF", "TWO_ON_TWO_OFF"], ["HOURS_8"], False,
                                    text), "sales_remote")
         assert r["passed_gate"]
-        assert "-8 сменный график" in r["reasons"]
+        assert not any("сменный график" in reason for reason in r["reasons"])
+
+
+@pytest.mark.parametrize("schedule", [
+    "2–4 night shifts per month", "1 night shift per month",
+    "2-3 ночных смены в месяц", "Night shift", "График сутки через двое",
+])
+def test_any_mandatory_nights_rejected(schedule):
+    r = score_vacancy("Аккаунт-менеджер", TestScheduleInScoring._TEXT + schedule,
+                      "sales_remote")
+    assert not r["passed_gate"]
+    assert "ночные" in r["reasons"][0]
+
+
+def test_explicit_daytime_choice_is_allowed():
+    text = _hh_text(["TWO_ON_TWO_OFF"], ["HOURS_12"], True,
+                    TestScheduleInScoring._TEXT + "Можно выбрать только дневные смены.")
+    r = score_vacancy("Аккаунт-менеджер", text, "sales_remote")
+    assert r["passed_gate"]
+
+
+def test_negated_occasional_nights_are_not_required():
+    r = score_vacancy("Аккаунт-менеджер",
+                      TestScheduleInScoring._TEXT + "Без occasional night shifts",
+                      "sales_remote")
+    assert r["passed_gate"]

@@ -1,7 +1,9 @@
 # Шаблон system prompt для матчинга вакансий
 
-Используется в `src/matcher/claude_matcher.py` → `_make_system_prompt()`.
-Редактируй секцию **Scoring guide** для калибровки оценок.
+Исторический пример, не действующий системный промпт.
+Актуальный промпт: `src/matcher/cerebras_matcher.py` → `_SYSTEM_INSTRUCTION`.
+Профиль собирается в `_build_profile_text()`. Приоритеты и ограничения брать из
+согласованного PROFILE.md; не переносить старую рубрику ниже без сверки с кодом.
 
 ---
 

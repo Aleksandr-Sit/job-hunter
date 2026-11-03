@@ -25,7 +25,7 @@ metadata:
 3. Реализуй `parse(self) -> list[Job]`
 4. Каждой вакансии дай уникальный `id` с префиксом источника: `f"{prefix}_{uid}"`
 5. Заполни обязательные поля: `id`, `title`, `company`, `description`, `url`, `source`
-6. Зарегистрируй парсер в `src/scheduler.py` в функции `_build_parsers()`
+6. Зарегистрируй парсер в `src/parsers/registry.py` в `_SPEC`; scheduler использует общий реестр
 7. Добавь флаг `enabled` в `config/settings.yaml` → `parsers:`
 8. Протестируй: `python -m src.parsers.web.<name>`
 

@@ -58,7 +58,10 @@ def query_label(entry) -> str:
     Суженный до названия — отдельная подпись: это другой срез выдачи."""
     if isinstance(entry, dict):
         text = entry.get("text", "")
-        return f"{text} [название]" if entry.get("field") == "name" else text
+        label = f"{text} [название]" if entry.get("field") == "name" else text
+        if entry.get("area") is not None:
+            label += f" [регионы: {entry['area']}]"
+        return label
     return entry or ""
 
 
@@ -67,6 +70,8 @@ def _query_params(entry) -> dict:
         params = {"text": entry.get("text", "")}
         if entry.get("field") == "name":
             params["search_field"] = "name"
+        if entry.get("area") is not None:
+            params["area"] = entry["area"]
         return params
     return {"text": entry} if entry else {}
 
