@@ -83,6 +83,36 @@ def _prefilter_line(job: Job) -> str:
     return f"🎯 <i>{_esc(label)} · {_esc(reasons)}</i>" if reasons else f"🎯 <i>{_esc(label)}</i>"
 
 
+# Только общие фразы об отсутствии зарплаты: конкретные условия и суммы
+# нельзя удалять лишь потому, что они тоже относятся к оплате.
+_UNKNOWN_PAY_CLAUSE = re.compile(
+    r"(?:(?:зарплата|заработная плата|доход|оплата|условия оплаты) "
+    r"не (?:указан[аы]?|раскрыт[аы]?|подтвержд[её]н[аы]?)"
+    r"|(?:доход|зарплату|условия оплаты|оплату) (?:необходимо |нужно |стоит )?уточнить"
+    r"|(?:необходимо |нужно |стоит )?уточнить (?:доход|зарплату|условия оплаты|оплату))",
+    re.IGNORECASE,
+)
+
+
+def _watch_items(job: Job, warnings: list[str]) -> list[str]:
+    items = listing_warnings(job)
+    unknown_pay = not job.salary_min and not job.salary_max
+    seen = {" ".join(item.casefold().split()).rstrip(".") for item in items}
+    for note in warnings[:2]:
+        # Удаляем только повторяющиеся части; например, офис в Дубае
+        # в том же пункте остаётся самостоятельным полезным замечанием.
+        if unknown_pay:
+            clauses = re.split(r"\s*[;,.!:–—]\s*", note)
+            remaining = [c for c in clauses if c and not _UNKNOWN_PAY_CLAUSE.fullmatch(c)]
+            if len(remaining) != len([c for c in clauses if c]):
+                note = "; ".join(remaining)
+        key = " ".join(note.casefold().split()).rstrip(".")
+        if key and key not in seen:
+            items.append(note)
+            seen.add(key)
+    return items
+
+
 def format_job_message(job: Job, match: MatchResult) -> str:
     emoji = _score_emoji(match.score)
     meta = _meta_line(job)
@@ -95,8 +125,7 @@ def format_job_message(job: Job, match: MatchResult) -> str:
 
     # Обязательные пометки не должны зависеть от дисциплины LLM или теряться
     # за первыми двумя пунктами ответа (решения владельца 03.11.2026).
-    required = listing_warnings(job)
-    watch_items = required + [r for r in match.watch_out[:2] if r not in required]
+    watch_items = _watch_items(job, match.watch_out)
     watch = "\n".join(f"· {_esc(r)}" for r in watch_items)
     watch_block = f"⚠️ <b>Учесть</b>\n{watch}" if watch else ""
 
