@@ -25,6 +25,8 @@ def test_unknown_salary_survives_two_other_ai_warnings():
     "Доход не подтверждён: зарплата не указана, уточнить условия оплаты.",
     "в объявлении не указана зарплата",
     "Зарплата не указана в вакансии",
+    "требуется уточнение условий оплаты",
+    "Необходимо уточнение зарплаты.",
 ])
 def test_unknown_salary_is_not_repeated(note):
     m = MatchResult("test", 78, [], [note, "Офис в Дубае, потребуется переезд"], "")
@@ -43,6 +45,17 @@ def test_salary_duplicate_keeps_other_facts_in_same_note():
     assert text.count("зарплата не указана") == 1
     assert "офис в Дубае" in text
     assert "Оклад 50000, остальное — премия по KPI" in text
+
+
+def test_pay_clarification_keeps_specific_conditions():
+    m = MatchResult("test", 68, [], [
+        "требуется уточнение условий оплаты; требуется опыт Buildroot/Yocto",
+        "требуется уточнение условий оплаты на испытательном сроке",
+    ], "")
+    text = format_job_message(job(), m)
+    assert "требуется опыт Buildroot/Yocto" in text
+    assert "требуется уточнение условий оплаты на испытательном сроке" in text
+    assert text.count("\n· ") == 3
 
 
 def test_ai_warnings_are_not_repeated_or_replaced_with_filler():
