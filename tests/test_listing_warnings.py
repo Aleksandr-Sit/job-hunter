@@ -23,6 +23,8 @@ def test_unknown_salary_survives_two_other_ai_warnings():
     "зарплата не указана – доход необходимо уточнить",
     "Зарплата не указана, уточнить условия оплаты.",
     "Доход не подтверждён: зарплата не указана, уточнить условия оплаты.",
+    "в объявлении не указана зарплата",
+    "Зарплата не указана в вакансии",
 ])
 def test_unknown_salary_is_not_repeated(note):
     m = MatchResult("test", 78, [], [note, "Офис в Дубае, потребуется переезд"], "")
@@ -55,6 +57,28 @@ def test_variable_pay_in_omitted_middle_is_visible():
             salary_min=75000, salary_max=90000, salary_currency="RUB")
     assert "KPI" not in j.to_text()
     assert any("Доход не подтверждён" in note for note in listing_warnings(j))
+
+
+def test_variable_pay_screenshot_keeps_amounts_without_generic_duplicate():
+    j = job("Оклад и бонус по KPI", salary_max=120000)
+    detail = "Оклад 50 000 ₽ + бонус до 70 000 ₽ – чистый доход может быть ниже требований"
+    m = MatchResult("test", 72, [], [detail,
+        "Комиссионные/премии не гарантированы, необходимо уточнить реальный размер дохода"], "")
+    text = format_job_message(j, m)
+    assert detail in text
+    assert "Комиссионные/премии не гарантированы" not in text
+    assert text.count("\n· ") == 2
+
+
+def test_variable_pay_duplicate_keeps_unrelated_clause():
+    m = MatchResult("test", 72, [], [
+        "Премии не гарантированы; требуется опыт Zendesk",
+        "Бонус 70 000 зависит от KPI",
+    ], "")
+    text = format_job_message(job("Премия по KPI", salary_min=50000), m)
+    assert "требуется опыт Zendesk" in text
+    assert "Бонус 70 000 зависит от KPI" in text
+    assert "Премии не гарантированы" not in text
 
 
 @pytest.mark.parametrize("pay", ["performance bonus", "sales commission", "variable pay"])

@@ -86,10 +86,23 @@ def _prefilter_line(job: Job) -> str:
 # Только общие фразы об отсутствии зарплаты: конкретные условия и суммы
 # нельзя удалять лишь потому, что они тоже относятся к оплате.
 _UNKNOWN_PAY_CLAUSE = re.compile(
-    r"(?:(?:зарплата|заработная плата|доход|оплата|условия оплаты) "
+    r"(?:(?:в (?:объявлении|вакансии|описании) )?(?:не указан[аы]? "
+    r"(?:зарплата|заработная плата|доход|оплата)|"
+    r"(?:зарплата|заработная плата|доход|оплата|условия оплаты) "
     r"не (?:указан[аы]?|раскрыт[аы]?|подтвержд[её]н[аы]?)"
+    r")(?: в (?:объявлении|вакансии|описании))?"
     r"|(?:доход|зарплату|условия оплаты|оплату) (?:необходимо |нужно |стоит )?уточнить"
     r"|(?:необходимо |нужно |стоит )?уточнить (?:доход|зарплату|условия оплаты|оплату))",
+    re.IGNORECASE,
+)
+
+
+_VARIABLE_PAY_CLAUSE = re.compile(
+    r"(?:(?:комиссионные|премии|бонусы|проценты|kpi)"
+    r"(?:\s*[/и+]\s*(?:комиссионные|премии|бонусы|проценты|kpi))*"
+    r"\s+не гарантированы"
+    r"|(?:необходимо |нужно |стоит )?уточнить (?:реальный размер дохода|"
+    r"гарантированный оклад|итоговую оплату))",
     re.IGNORECASE,
 )
 
@@ -97,13 +110,17 @@ _UNKNOWN_PAY_CLAUSE = re.compile(
 def _watch_items(job: Job, warnings: list[str]) -> list[str]:
     items = listing_warnings(job)
     unknown_pay = not job.salary_min and not job.salary_max
+    variable_pay = any("есть KPI/премии/проценты" in item for item in items)
     seen = {" ".join(item.casefold().split()).rstrip(".") for item in items}
     for note in warnings[:2]:
         # Удаляем только повторяющиеся части; например, офис в Дубае
         # в том же пункте остаётся самостоятельным полезным замечанием.
-        if unknown_pay:
+        if unknown_pay or variable_pay:
             clauses = re.split(r"\s*[;,.!:–—]\s*", note)
-            remaining = [c for c in clauses if c and not _UNKNOWN_PAY_CLAUSE.fullmatch(c)]
+            remaining = [c for c in clauses if c and not (
+                (unknown_pay and _UNKNOWN_PAY_CLAUSE.fullmatch(c))
+                or (variable_pay and _VARIABLE_PAY_CLAUSE.fullmatch(c))
+            )]
             if len(remaining) != len([c for c in clauses if c]):
                 note = "; ".join(remaining)
         key = " ".join(note.casefold().split()).rstrip(".")
