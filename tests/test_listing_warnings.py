@@ -11,11 +11,11 @@ def job(description="", **kwargs):
                source="example", description=description, **kwargs)
 
 
-def test_unknown_salary_survives_two_other_ai_warnings():
+def test_unknown_salary_adds_no_warning():
     j = job()
     m = MatchResult("test", 80, [], ["Первое", "Второе", "Третье"], "")
     text = format_job_message(j, m)
-    assert "Доход не подтверждён" in text
+    assert "Доход не подтверждён" not in text
     assert "Первое" in text and "Второе" in text
 
 
@@ -31,8 +31,8 @@ def test_unknown_salary_survives_two_other_ai_warnings():
 def test_unknown_salary_is_not_repeated(note):
     m = MatchResult("test", 78, [], [note, "Офис в Дубае, потребуется переезд"], "")
     text = format_job_message(job(), m)
-    assert text.count("\n· ") == 2
-    assert text.count("зарплата не указана") == 1
+    assert text.count("\n· ") == 1
+    assert "зарплата не указана" not in text
     assert "Офис в Дубае, потребуется переезд" in text
 
 
@@ -42,7 +42,7 @@ def test_salary_duplicate_keeps_other_facts_in_same_note():
         "Оклад 50000, остальное — премия по KPI",
     ], "")
     text = format_job_message(job(), m)
-    assert text.count("зарплата не указана") == 1
+    assert "зарплата не указана" not in text
     assert "офис в Дубае" in text
     assert "Оклад 50000, остальное — премия по KPI" in text
 
@@ -55,7 +55,7 @@ def test_pay_clarification_keeps_specific_conditions():
     text = format_job_message(job(), m)
     assert "требуется опыт Buildroot/Yocto" in text
     assert "требуется уточнение условий оплаты на испытательном сроке" in text
-    assert text.count("\n· ") == 3
+    assert text.count("\n· ") == 2
 
 
 def test_ai_warnings_are_not_repeated_or_replaced_with_filler():
@@ -69,7 +69,7 @@ def test_variable_pay_in_omitted_middle_is_visible():
     j = job("a" * 900 + " квартальная премия по KPI " + "b" * 900,
             salary_min=75000, salary_max=90000, salary_currency="RUB")
     assert "KPI" not in j.to_text()
-    assert any("Доход не подтверждён" in note for note in listing_warnings(j))
+    assert any("доход включает переменную часть" in note for note in listing_warnings(j))
 
 
 def test_variable_pay_screenshot_keeps_amounts_without_generic_duplicate():
@@ -96,7 +96,7 @@ def test_variable_pay_duplicate_keeps_unrelated_clause():
 
 @pytest.mark.parametrize("pay", ["performance bonus", "sales commission", "variable pay"])
 def test_english_variable_pay_is_flagged(pay):
-    assert any("Доход не подтверждён" in note
+    assert any("доход включает переменную часть" in note
                for note in listing_warnings(job(pay, salary_min=120000)))
 
 
@@ -113,6 +113,25 @@ def test_workload_warnings_are_not_lost(desc):
 
 def test_standard_day_has_no_invented_drawbacks():
     assert listing_warnings(job("График 5/2, 8 часов", salary_min=130000)) == []
+
+
+@pytest.mark.parametrize("note", [
+    "Формат работы (офис/удалёнка) не уточнён, требуется уточнение",
+    "Уровень английского не указан",
+    "Нет информации о графике",
+    "Условия релокации не раскрыты",
+])
+def test_missing_information_is_omitted_from_all_sections(note):
+    m = MatchResult("test", 72, [note], [note], note)
+    text = format_job_message(job(), m)
+    assert note not in text
+    assert "Почему подходит" not in text
+    assert "Учесть" not in text
+    assert "💬" not in text
+
+
+def test_unknown_salary_has_no_automatic_warning():
+    assert listing_warnings(job()) == []
 
 
 def test_night_option_requires_confirmation_of_daytime_only():

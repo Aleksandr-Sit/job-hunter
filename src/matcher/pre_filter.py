@@ -1923,10 +1923,8 @@ def _salary_below_floor(job: Job) -> str | None:
 def listing_warnings(job: Job) -> list[str]:
     """Обязательные пометки по полной вакансии, независимо от ответа AI."""
     notes = []
-    if not job.salary_min and not job.salary_max:
-        notes.append("Доход не подтверждён: зарплата не указана, уточнить условия оплаты.")
-    elif _VARIABLE_PAY.search(_n(job.description)):
-        notes.append("Доход не подтверждён: есть KPI/премии/проценты, уточнить гарантированный оклад и итоговую оплату.")
+    if _VARIABLE_PAY.search(_n(job.description)):
+        notes.append("Есть KPI/премии/проценты: доход включает переменную часть.")
     notes.extend(schedule_warnings(job.description))
     return notes
 

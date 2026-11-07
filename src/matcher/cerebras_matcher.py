@@ -157,8 +157,8 @@ their presence in a project stack; respect the resume's experience boundaries.
 
 Income: use the NET monthly minimum and target from the supplied preferences.
 The target is not a cap; do not substitute figures from historical documents.
-Keep undisclosed salary and KPI/commission-dependent income for clarification.
-Explicitly flag unconfirmed income in watch_out. A range maximum or potential
+Omit undisclosed salary from all text fields. Mention KPI/commission-dependent
+income only when the listing states it. A range maximum or potential
 bonus is not guaranteed pay. Do not invent exchange rates, net pay or tax rates.
 Remote work or office/hybrid in Samara is acceptable; relocation is actively
 considered in the locations listed in preferences, not only for exceptional offers.
@@ -193,7 +193,15 @@ nights. If the text gives no proof, KEEP the job for clarification and explicitl
 ask to confirm the absence of mandatory nights. Actual stated overnight working
 hours, including shifts ending at midnight, are not merely an uncertain HH flag.
 
-WATCH_OUT must list only drawbacks that follow from the LISTING TEXT. Mention
+WATCH_OUT must list only drawbacks that follow from the LISTING TEXT.
+Only report information supported by the supplied listing or verified candidate
+profile. Missing information is not a drawback: omit the topic entirely from
+why_fits, watch_out and recommendation. Never fill gaps with guesses, statements
+like "not specified / needs clarification", or requests to clarify unstated
+salary, work format, schedule, language, relocation or other conditions.
+Do not present the candidate's willingness to relocate or work remotely as
+evidence that the employer offers either. If there are no supported drawbacks,
+return watch_out: []; if there is no grounded advice, return recommendation: "".
 English in watch_out ONLY if the listing itself mentions English or a foreign
 language. Never write speculation like "English is not stated, but there may be
 international clients/meetings" — the candidate's English level is NOT a

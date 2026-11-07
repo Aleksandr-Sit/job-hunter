@@ -108,12 +108,31 @@ _VARIABLE_PAY_CLAUSE = re.compile(
 )
 
 
+_MISSING_INFORMATION = re.compile(
+    r"не\s+(?:указан\w*|уточн[её]н\w*|раскрыт\w*|подтвержд[её]н\w*|описан\w*)"
+    r"|нет\s+(?:информации|данных|сведений)"
+    r"|(?:информация|данные|сведения)\s+отсутству\w*",
+    re.IGNORECASE,
+)
+
+
+def _without_missing_information(note: str) -> str:
+    """Не показывать заполнители об отсутствующих данных, в том числе из кэша."""
+    clauses = re.split(r"\s*[;,.!:–—]\s*", note)
+    remaining = [c for c in clauses if c and not (
+        _MISSING_INFORMATION.search(c) or _UNKNOWN_PAY_CLAUSE.fullmatch(c)
+        or re.fullmatch(r"(?:требуется|необходимо|нужно) уточнение", c, re.I)
+    )]
+    return "; ".join(remaining) if len(remaining) != len([c for c in clauses if c]) else note
+
+
 def _watch_items(job: Job, warnings: list[str]) -> list[str]:
     items = listing_warnings(job)
     unknown_pay = not job.salary_min and not job.salary_max
-    variable_pay = any("есть KPI/премии/проценты" in item for item in items)
+    variable_pay = any("Есть KPI/премии/проценты" in item for item in items)
     seen = {" ".join(item.casefold().split()).rstrip(".") for item in items}
     for note in warnings[:2]:
+        note = _without_missing_information(note)
         # Удаляем только повторяющиеся части; например, офис в Дубае
         # в том же пункте остаётся самостоятельным полезным замечанием.
         if unknown_pay or variable_pay:
@@ -138,7 +157,8 @@ def format_job_message(job: Job, match: MatchResult) -> str:
     if mode:
         meta = f"{meta}\n{mode}"
 
-    fits = "\n".join(f"· {_esc(r)}" for r in match.why_fits[:4])
+    fits = "\n".join(f"· {_esc(r)}" for note in match.why_fits[:4]
+                     if (r := _without_missing_information(note)))
     fits_block = f"✅ <b>Почему подходит</b>\n{fits}" if fits else ""
 
     # Обязательные пометки не должны зависеть от дисциплины LLM или теряться
@@ -150,7 +170,8 @@ def format_job_message(job: Job, match: MatchResult) -> str:
     sections = [s for s in [fits_block, watch_block] if s]
     middle = f"\n\n{_DIV}\n\n".join(sections)
 
-    rec = f"<i>💬 {_esc(match.recommendation)}</i>" if match.recommendation else ""
+    recommendation = _without_missing_information(match.recommendation)
+    rec = f"<i>💬 {_esc(recommendation)}</i>" if recommendation else ""
     prefilter = _prefilter_line(job)
     footer = f"<code>{match.score}/100</code>  ·  {_esc(job.source)}"
 
