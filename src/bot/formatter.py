@@ -108,6 +108,29 @@ _VARIABLE_PAY_CLAUSE = re.compile(
 )
 
 
+_VARIABLE_PAY_TOPIC = re.compile(
+    r"kpi|преми\w*|бонус\w*|комиссион\w*|процент\w*|переменн\w*\s+част\w*",
+    re.IGNORECASE,
+)
+_PAY_DETAIL = re.compile(
+    r"\d|испытательн|ежемесяч|ежекварталь|кварталь|ежегод|еженедель|"
+    r"выпла\w*|начисл\w*|удерж\w*|после\s|при\s|за\s|срок\w*",
+    re.IGNORECASE,
+)
+
+
+def _without_variable_pay_repetition(note: str) -> str:
+    """Убирать общую мысль об оплате, сохраняя суммы, условия и соседние темы."""
+    clauses = re.split(r"\s*[;,.!:–—]\s*|\s+и\s+(?=возможност)", note)
+    remaining = [c for c in clauses if c and not (
+        _VARIABLE_PAY_CLAUSE.fullmatch(c)
+        or (_VARIABLE_PAY_TOPIC.search(c) and not _PAY_DETAIL.search(c))
+    )]
+    if len(remaining) == len([c for c in clauses if c]):
+        return note
+    return "; ".join(remaining)
+
+
 _MISSING_INFORMATION = re.compile(
     r"не\s+(?:указан\w*|уточн[её]н\w*|раскрыт\w*|подтвержд[её]н\w*|описан\w*)"
     r"|нет\s+(?:информации|данных|сведений)"
@@ -133,6 +156,8 @@ def _watch_items(job: Job, warnings: list[str]) -> list[str]:
     seen = {" ".join(item.casefold().split()).rstrip(".") for item in items}
     for note in warnings[:2]:
         note = _without_missing_information(note)
+        if variable_pay:
+            note = _without_variable_pay_repetition(note)
         # Удаляем только повторяющиеся части; например, офис в Дубае
         # в том же пункте остаётся самостоятельным полезным замечанием.
         if unknown_pay or variable_pay:
@@ -157,8 +182,12 @@ def format_job_message(job: Job, match: MatchResult) -> str:
     if mode:
         meta = f"{meta}\n{mode}"
 
-    fits = "\n".join(f"· {_esc(r)}" for note in match.why_fits[:4]
-                     if (r := _without_missing_information(note)))
+    variable_pay = any("Есть KPI/премии/проценты" in item
+                       for item in listing_warnings(job))
+    fit_notes = [_without_missing_information(note) for note in match.why_fits[:4]]
+    if variable_pay:
+        fit_notes = [_without_variable_pay_repetition(note) for note in fit_notes]
+    fits = "\n".join(f"· {_esc(note)}" for note in fit_notes if note)
     fits_block = f"✅ <b>Почему подходит</b>\n{fits}" if fits else ""
 
     # Обязательные пометки не должны зависеть от дисциплины LLM или теряться
@@ -171,6 +200,8 @@ def format_job_message(job: Job, match: MatchResult) -> str:
     middle = f"\n\n{_DIV}\n\n".join(sections)
 
     recommendation = _without_missing_information(match.recommendation)
+    if variable_pay:
+        recommendation = _without_variable_pay_repetition(recommendation)
     rec = f"<i>💬 {_esc(recommendation)}</i>" if recommendation else ""
     prefilter = _prefilter_line(job)
     footer = f"<code>{match.score}/100</code>  ·  {_esc(job.source)}"

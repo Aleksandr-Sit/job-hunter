@@ -94,6 +94,30 @@ def test_variable_pay_duplicate_keeps_unrelated_clause():
     assert "Премии не гарантированы" not in text
 
 
+def test_variable_pay_repetition_across_card_sections():
+    detail = "Оклад 70 000 ₽ на руки ниже минимального требования 100 000 ₽"
+    m = MatchResult("test", 55, ["Удалённый формат работы"], [detail,
+        "Часть дохода зависит от KPI/премий, необходимо уточнить размер переменной части"],
+        "Уточнить размер переменной части дохода и возможность применения AI-автоматизации в e-commerce.")
+    text = format_job_message(job("Премия по KPI", salary_min=70000), m)
+    assert text.count("переменную часть") == 1
+    assert "Часть дохода зависит" not in text
+    assert "уточнить размер" not in text.lower()
+    assert detail in text
+    assert "возможность применения AI-автоматизации в e-commerce" in text
+
+
+@pytest.mark.parametrize("detail", [
+    "Бонус до 70 000 ₽ зависит от KPI",
+    "Премия выплачивается ежеквартально",
+    "На испытательном сроке премии нет",
+])
+def test_variable_pay_concrete_recommendation_is_preserved(detail):
+    m = MatchResult("test", 72, [], [], detail)
+    text = format_job_message(job("Премия по KPI", salary_min=70000), m)
+    assert detail in text
+
+
 @pytest.mark.parametrize("pay", ["performance bonus", "sales commission", "variable pay"])
 def test_english_variable_pay_is_flagged(pay):
     assert any("доход включает переменную часть" in note
