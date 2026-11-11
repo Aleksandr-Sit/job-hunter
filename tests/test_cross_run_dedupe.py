@@ -113,6 +113,41 @@ def pipe(db, monkeypatch):
 
 
 class TestKeyAndStorage:
+    def test_failed_card_retries_without_new_jobs(self, pipe):
+        j = _hh("retry", "Самара")
+        pipe["fail_send"].add(j.id)
+        pipe["run"]([j])
+        assert [job.id for job, _ in storage.pending_notifications()] == [j.id]
+        pipe["run"]([])
+        assert [job.id for job, _ in storage.pending_notifications()] == [j.id]
+        pipe["fail_send"].clear()
+        pipe["run"]([])
+        assert pipe["sent"] == [j.id]
+        assert storage.pending_notifications() == []
+        pipe["run"]([])
+        assert pipe["sent"] == [j.id]
+
+    def test_pending_survives_sender_exception(self, db, monkeypatch):
+        j = _hh("retry", "Самара")
+        m = MatchResult(j.id, 80, [], [], "")
+        def fail(pairs):
+            raise RuntimeError("interrupted")
+        monkeypatch.setattr(scheduler, "send_jobs_batch", fail)
+        with pytest.raises(RuntimeError):
+            scheduler._deliver_notifications([(j, m)])
+        assert storage.pending_notifications() == [(j, m)]
+
+    def test_already_delivered_copy_clears_pending_without_send(self, db, monkeypatch):
+        j = _hh("retry", "Самара")
+        m = MatchResult(j.id, 80, [], [], "")
+        key = job_dedupe_key(j)
+        storage.enqueue_notifications([(j, m)], {j.id: key})
+        storage.remember_dedupe_keys([(key, "delivered-copy")])
+        monkeypatch.setattr(scheduler, "send_jobs_batch",
+                            lambda pairs: pytest.fail("Already delivered"))
+        assert scheduler._deliver_notifications(storage.pending_notifications()) == []
+        assert storage.pending_notifications() == []
+
     def test_hh_key_ignores_city(self):
         assert job_dedupe_key(_hh("1", "Самара")) == job_dedupe_key(_hh("2", "Москва"))
 

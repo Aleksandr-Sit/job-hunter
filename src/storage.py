@@ -110,6 +110,13 @@ def init_db() -> None:
                 value TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS pending_notifications (
+                job_id TEXT PRIMARY KEY,
+                dedupe_key TEXT NOT NULL,
+                job_json TEXT NOT NULL,
+                match_json TEXT NOT NULL,
+                added_at TEXT NOT NULL
+            );
         """)
         # Миграция: версия скоринга (промпт+профиль+критерии). Кэш с другой
         # версией считается устаревшим и пересчитывается — иначе смена критериев
@@ -291,6 +298,45 @@ def _job_from_json(raw: str) -> Job:
     if d.get("published_at"):
         d["published_at"] = datetime.fromisoformat(d["published_at"])
     return Job(**d)
+
+
+def enqueue_notifications(pairs: list, keys: dict) -> None:
+    """Сохраняет карточки до обращения к Telegram; повтор не меняет дату."""
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        conn.executemany(
+            "INSERT OR IGNORE INTO pending_notifications VALUES (?,?,?,?,?)",
+            [(j.id, keys[j.id], _job_to_json(j),
+              json.dumps(asdict(m), ensure_ascii=False), now) for j, m in pairs],
+        )
+
+
+def pending_notifications() -> list:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT job_json, match_json FROM pending_notifications ORDER BY added_at, job_id"
+        ).fetchall()
+    return [(_job_from_json(r["job_json"]), MatchResult(**json.loads(r["match_json"])))
+            for r in rows]
+
+
+def complete_notifications(pairs: list) -> None:
+    """Ключ доставки и удаление всех ожидающих копий — одна транзакция."""
+    now = datetime.now(timezone.utc).isoformat()
+    with get_conn() as conn:
+        conn.executemany(
+            "INSERT INTO dedupe_keys VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET "
+            "job_id=excluded.job_id, created_at=excluded.created_at",
+            [(key, jid, now) for key, jid in pairs],
+        )
+        conn.executemany("DELETE FROM pending_notifications WHERE dedupe_key=?",
+                         [(key,) for key, _ in pairs])
+
+
+def discard_pending_notifications(keys: list) -> None:
+    with get_conn() as conn:
+        conn.executemany("DELETE FROM pending_notifications WHERE dedupe_key=?",
+                         [(key,) for key in keys])
 
 
 def pool_add(jobs: list) -> int:

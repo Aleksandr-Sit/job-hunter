@@ -474,6 +474,18 @@ def run_once() -> None:
             _prune_li_pool()
 
 
+def _deliver_notifications(pairs: list, window_days: int = 30) -> list:
+    keys = {j.id: job_dedupe_key(j) for j, _ in pairs}
+    known = storage.known_dedupe_keys(list(keys.values()), max_age_days=window_days)
+    # Копия могла дойти в предыдущем прогоне после неудачи оригинала.
+    storage.discard_pending_notifications(list(known))
+    pairs = [(j, m) for j, m in pairs if keys[j.id] not in known]
+    storage.enqueue_notifications(pairs, keys)
+    sent = send_jobs_batch(dedupe_jobs(pairs)) if pairs else []
+    storage.complete_notifications([(keys[j.id], j.id) for j in sent])
+    return sent
+
+
 def _run_pipeline() -> None:
     cfg = _load_config()
     matching_cfg = cfg.get("matching", {})
@@ -481,6 +493,11 @@ def _run_pipeline() -> None:
     batch_size = matching_cfg.get("batch_size", 5)
 
     storage.init_db()
+    pending = storage.pending_notifications()
+    if pending:
+        retried = _deliver_notifications(
+            pending, cfg.get("scheduler", {}).get("dedupe_window_days", 30))
+        logger.info("Pending notifications: delivered %d of %d", len(retried), len(pending))
     parsers = _build_parsers(cfg)
 
     # 1. Параллельный парсинг
@@ -613,11 +630,10 @@ def _run_pipeline() -> None:
     if before != len(matched):
         logger.info("Near-дубликаты схлопнуты: %d → %d", before, len(matched))
 
-    sent = send_jobs_batch(matched)
+    sent = _deliver_notifications(matched, window_days)
     logger.info("Sent %d notifications", len(sent))
     # Ключи — только доставленных карточек: по ним следующие прогоны узнают копии
     # (см. _drop_sent_copies). Не доставленная ключ не занимает.
-    storage.remember_dedupe_keys([(job_dedupe_key(j), j.id) for j in sent])
 
     # Дневной итог (если отправлено что-то)
     if sent:

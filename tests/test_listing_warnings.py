@@ -61,8 +61,8 @@ def test_pay_clarification_keeps_specific_conditions():
 def test_ai_warnings_are_not_repeated_or_replaced_with_filler():
     m = MatchResult("test", 78, [], ["Офис в Дубае", "офис в Дубае.", "Третье"], "")
     text = format_job_message(job(salary_min=100000), m)
-    assert text.count("\n· ") == 1
-    assert "Третье" not in text
+    assert text.count("\n· ") == 2
+    assert "Третье" in text
 
 
 def test_variable_pay_in_omitted_middle_is_visible():
@@ -163,6 +163,11 @@ def test_long_shift_warning_keeps_other_schedule_risks():
     "Уровень английского не указан",
     "Нет информации о графике",
     "Условия релокации не раскрыты",
+    "необходимо уточнить",
+    "Нужно уточнить.",
+    "Следует уточнить",
+    "Уточнить",
+    "Необходимо уточнить: уровень английского не указан",
 ])
 def test_missing_information_is_omitted_from_all_sections(note):
     m = MatchResult("test", 72, [note], [note], note)
@@ -175,6 +180,67 @@ def test_missing_information_is_omitted_from_all_sections(note):
 
 def test_unknown_salary_has_no_automatic_warning():
     assert listing_warnings(job()) == []
+
+
+def test_long_card_keeps_valid_html_footer_and_action_space():
+    from html.parser import HTMLParser
+
+    class CheckHTML(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.tags = []
+            self.visible = ""
+
+        def handle_starttag(self, tag, attrs):
+            self.tags.append(tag)
+
+        def handle_endtag(self, tag):
+            assert self.tags.pop() == tag
+
+        def handle_data(self, data):
+            self.visible += data
+
+    m = MatchResult("test", 72, ["Опыт <Web3> & автоматизации 😀 " * 500], [], "")
+    text = format_job_message(job(), m)
+    parser = CheckHTML()
+    parser.feed(text)
+    assert not parser.tags
+    assert "<Web3> & автоматизации" in parser.visible
+    assert "72/100" in parser.visible and parser.visible.endswith("example")
+    assert len((parser.visible + "\n\n✅ Откликнулся · 11.11").encode("utf-16-le")) // 2 < 4096
+
+
+def test_empty_clarification_keeps_concrete_neighbor_and_question():
+    detail = "Необходимо уточнить допустимые часы начала рабочего дня"
+    m = MatchResult("test", 72, [], [
+        "необходимо уточнить; требуется опыт Zendesk", detail,
+    ], "")
+    text = format_job_message(job(), m)
+    assert "· требуется опыт Zendesk" in text
+    assert detail in text
+    assert "· необходимо уточнить;" not in text
+
+
+def test_watch_limit_applies_to_useful_items_after_cleanup():
+    m = MatchResult("test", 72, [], [
+        "необходимо уточнить", "Зарплата не указана", "Требуется опыт Zendesk",
+        "Офис в Дубае", "График 6/1",
+    ], "")
+    text = format_job_message(job(), m)
+    assert "Требуется опыт Zendesk" in text
+    assert "Офис в Дубае" in text
+    assert "График 6/1" not in text
+
+
+def test_fit_limit_applies_after_cleanup_and_deduplication():
+    m = MatchResult("test", 72, [
+        "Зарплата не указана", "Опыт Zendesk", "Опыт Zendesk",
+        "Опыт B2B", "Опыт автоматизации", "Опыт Web3", "Лишний пункт",
+    ], [], "")
+    text = format_job_message(job(), m)
+    assert text.count("Опыт Zendesk") == 1
+    assert "Опыт Web3" in text
+    assert "Лишний пункт" not in text
 
 
 def test_night_option_requires_confirmation_of_daytime_only():

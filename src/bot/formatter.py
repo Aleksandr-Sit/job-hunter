@@ -1,11 +1,51 @@
 """Форматирует вакансию + результат матчинга в Telegram HTML-сообщение."""
 import re
+from html.parser import HTMLParser
 
 from ..matcher.pre_filter import ai_tools_phrase, listing_warnings
 from ..models import Job, MatchResult, salary_range
 from ..parsers.hh_enrich import schedule_summary
 
 _DIV = "─" * 22
+
+
+def _limit_html(text: str, limit: int) -> str:
+    """Обрезает видимый текст, сохраняя сущности и закрывая HTML-теги.
+
+    Считаем UTF-16 консервативно: эмодзи занимает две единицы.
+    """
+    class Limiter(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.parts = []
+            self.tags = []
+            self.left = limit - 1
+            self.cut = False
+
+        def handle_starttag(self, tag, attrs):
+            if not self.cut:
+                self.parts.append(self.get_starttag_text())
+                self.tags.append(tag)
+
+        def handle_endtag(self, tag):
+            if not self.cut and self.tags and self.tags[-1] == tag:
+                self.parts.append(f"</{self.tags.pop()}>")
+
+        def handle_data(self, data):
+            if self.cut:
+                return
+            for char in data:
+                size = len(char.encode("utf-16-le")) // 2
+                if size > self.left:
+                    self.parts.append("…")
+                    self.cut = True
+                    break
+                self.parts.append(_esc(char))
+                self.left -= size
+
+    parser = Limiter()
+    parser.feed(text)
+    return "".join(parser.parts) + "".join(f"</{tag}>" for tag in reversed(parser.tags))
 
 
 def _strip_html(text: str) -> str:
@@ -155,7 +195,9 @@ def _without_missing_information(note: str) -> str:
     clauses = re.split(r"\s*[;,.!:–—]\s*", note)
     remaining = [c for c in clauses if c and not (
         _MISSING_INFORMATION.search(c) or _UNKNOWN_PAY_CLAUSE.fullmatch(c)
-        or re.fullmatch(r"(?:требуется|необходимо|нужно) уточнение", c, re.I)
+        or re.fullmatch(
+            r"(?:(?:требуется|необходимо|нужно|стоит|следует)\s+)?"
+            r"(?:уточнить|уточнение)", c.strip(), re.I)
     )]
     return "; ".join(remaining) if len(remaining) != len([c for c in clauses if c]) else note
 
@@ -165,7 +207,10 @@ def _watch_items(job: Job, warnings: list[str]) -> list[str]:
     unknown_pay = not job.salary_min and not job.salary_max
     variable_pay = any("Есть KPI/премии/проценты" in item for item in items)
     seen = {" ".join(item.casefold().split()).rstrip(".") for item in items}
-    for note in warnings[:2]:
+    added = 0
+    for note in warnings:
+        if added >= 2:
+            break
         note = _without_missing_information(note)
         if variable_pay:
             note = _without_variable_pay_repetition(note)
@@ -187,9 +232,11 @@ def _watch_items(job: Job, warnings: list[str]) -> list[str]:
             if standard_shift in items and _is_long_shift_note(note):
                 items[items.index(standard_shift)] = note
                 seen.add(key)
+                added += 1
                 continue
             items.append(note)
             seen.add(key)
+            added += 1
     return items
 
 
@@ -202,10 +249,11 @@ def format_job_message(job: Job, match: MatchResult) -> str:
 
     variable_pay = any("Есть KPI/премии/проценты" in item
                        for item in listing_warnings(job))
-    fit_notes = [_without_missing_information(note) for note in match.why_fits[:4]]
+    fit_notes = [_without_missing_information(note) for note in match.why_fits]
     if variable_pay:
         fit_notes = [_without_variable_pay_repetition(note) for note in fit_notes]
-    fits = "\n".join(f"· {_esc(note)}" for note in fit_notes if note)
+    fit_notes = list(dict.fromkeys(note for note in fit_notes if note))[:4]
+    fits = "\n".join(f"· {_esc(note)}" for note in fit_notes)
     fits_block = f"✅ <b>Почему подходит</b>\n{fits}" if fits else ""
 
     # Обязательные пометки не должны зависеть от дисциплины LLM или теряться
@@ -232,7 +280,10 @@ def format_job_message(job: Job, match: MatchResult) -> str:
         footer,
     ]
 
-    return f"\n{_DIV}\n\n".join(b for b in blocks if b).strip()
+    body = f"\n{_DIV}\n\n".join(b for b in blocks[:-1] if b).strip()
+    # Оставляем место для балла/источника и отметки «Откликнулся».
+    footer = _limit_html(footer, 180)
+    return f"{_limit_html(body, 3750)}\n{_DIV}\n\n{footer}"
 
 
 def format_daily_summary(count_parsed: int, count_sent: int, sources: list[str]) -> str:
