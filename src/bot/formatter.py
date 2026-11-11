@@ -139,6 +139,17 @@ _MISSING_INFORMATION = re.compile(
 )
 
 
+_LONG_SHIFT_NOTE = re.compile(
+    r"\b(?:10|11|12)(?:\s*[–—−-]\s*(?:10|11|12))?\s*"
+    r"(?:[-–—]\s*)?(?:час\w*|hour\w*)",
+    re.IGNORECASE,
+)
+
+
+def _is_long_shift_note(note: str) -> bool:
+    return bool(_LONG_SHIFT_NOTE.search(note) and re.search(r"смен\w*|shifts?", note, re.I))
+
+
 def _without_missing_information(note: str) -> str:
     """Не показывать заполнители об отсутствующих данных, в том числе из кэша."""
     clauses = re.split(r"\s*[;,.!:–—]\s*", note)
@@ -170,6 +181,13 @@ def _watch_items(job: Job, warnings: list[str]) -> list[str]:
                 note = "; ".join(remaining)
         key = " ".join(note.casefold().split()).rstrip(".")
         if key and key not in seen:
+            # AI может уточнить тот же риск (например, добавить вопрос о ночах).
+            # Заменяем общий пункт целиком, сохраняя все детали AI-пункта.
+            standard_shift = "Смены по 10–12 часов: уточнить нагрузку и время окончания."
+            if standard_shift in items and _is_long_shift_note(note):
+                items[items.index(standard_shift)] = note
+                seen.add(key)
+                continue
             items.append(note)
             seen.add(key)
     return items

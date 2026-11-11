@@ -139,6 +139,25 @@ def test_standard_day_has_no_invented_drawbacks():
     assert listing_warnings(job("График 5/2, 8 часов", salary_min=130000)) == []
 
 
+@pytest.mark.parametrize("hours", ["10–12-часовых", "10-12-часовых", "12 часов", "10—12 часов"])
+def test_long_shift_paraphrase_replaces_generic_warning(hours):
+    detail = f"График {hours} смен, требуется уточнить нагрузку и отсутствие обязательных ночных часов"
+    m = MatchResult("test", 68, [], [detail, "Оклад 70 000 ниже ожиданий"], "")
+    text = format_job_message(job("Часы в день (hh): HOURS_10"), m)
+    assert detail in text
+    assert "Смены по 10–12 часов:" not in text
+    assert "Оклад 70 000 ниже ожиданий" in text
+    assert text.count("\n· ") == 2
+
+
+def test_long_shift_warning_keeps_other_schedule_risks():
+    detail = "График 6/1, требуется уточнить выходные"
+    m = MatchResult("test", 68, [], [detail], "")
+    text = format_job_message(job("Смены по 12 часов"), m)
+    assert "Смены по 10–12 часов:" in text
+    assert detail in text
+
+
 @pytest.mark.parametrize("note", [
     "Формат работы (офис/удалёнка) не уточнён, требуется уточнение",
     "Уровень английского не указан",
