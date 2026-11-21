@@ -1942,6 +1942,12 @@ def direction_gate(job: Job) -> str | None:
     return _salary_below_floor(job)
 
 
+_US_ONLY_LOCATION = re.compile(
+    r"(?:us|usa|united states)\s+only|only\s+(?:us|usa|united states)",
+    re.IGNORECASE,
+)
+
+
 def score_job(job: Job) -> dict:
     """Скорит вакансию по всем ролям из criteria.yaml, возвращает лучшую по баллу.
 
@@ -1960,6 +1966,8 @@ def score_job(job: Job) -> dict:
         return {"best": results[0], "all": results}
 
     direction = direction_gate(job)
+    if not direction and job.is_remote and _US_ONLY_LOCATION.fullmatch((job.location or "").strip()):
+        direction = "удалёнка только из США"
     if direction:
         results = [{"role": r, "passed_gate": False, "score": 0, "recommend": False,
                     "reasons": [direction]} for r in CRITERIA["roles"]]

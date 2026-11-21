@@ -72,6 +72,7 @@ class RemoteOKParser(BaseParser):
             salary_min=sal_min,
             salary_max=sal_max,
             salary_currency="USD",
+            location=item.get("location") or None,
             is_remote=True,
             published_at=published_at,
             tags=item.get("tags", []),

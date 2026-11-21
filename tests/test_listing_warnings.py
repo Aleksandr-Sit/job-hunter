@@ -168,6 +168,10 @@ def test_long_shift_warning_keeps_other_schedule_risks():
     "Следует уточнить",
     "Уточнить",
     "Необходимо уточнить: уровень английского не указан",
+    "Но стоит подтвердить их отсутствие",
+    "Ночные смены не указаны, но стоит подтвердить их отсутствие.",
+    "требуется уточнение чистого дохода",
+    "в объявлении указано",
 ])
 def test_missing_information_is_omitted_from_all_sections(note):
     m = MatchResult("test", 72, [note], [note], note)
@@ -180,6 +184,18 @@ def test_missing_information_is_omitted_from_all_sections(note):
 
 def test_unknown_salary_has_no_automatic_warning():
     assert listing_warnings(job()) == []
+
+
+def test_card_keeps_specific_warnings_after_removing_empty_clarifications():
+    m = MatchResult("test", 68, [], [
+        "требуется уточнение чистого дохода",
+        "но стоит подтвердить их отсутствие",
+        "Стоит подтвердить отсутствие обязательных ночных смен",
+    ], "")
+    text = format_job_message(job("Performance bonus"), m)
+    assert "доход включает переменную часть" in text
+    assert "Стоит подтвердить отсутствие обязательных ночных смен" in text
+    assert text.count("\n· ") == 2
 
 
 def test_long_card_keeps_valid_html_footer_and_action_space():

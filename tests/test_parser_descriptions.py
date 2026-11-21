@@ -7,11 +7,26 @@
 - CryptoJobsList больше не отдаёт `jobPostingJSONLD`, описание осталось
   заглушкой «должность at компания», а ссылка на вакансию вела в 404.
 """
+from src.matcher.pre_filter import score_job
 from src.models import Job
 from src.parsers.normalize import clean_inline, clean_job_fields, html_to_text
 from src.parsers.web.cryptojoblist import CryptoJobListParser
 from src.parsers.web.greenhouse import GreenhouseParser
 from src.parsers.web.lever import LeverParser
+from src.parsers.web.remoteok import RemoteOKParser
+
+
+def test_remoteok_us_only_location_reaches_hard_filter():
+    job = RemoteOKParser()._parse_item({
+        "id": "1137903",
+        "position": "Data Strategy Operations Manager",
+        "company": "Abnormal",
+        "description": "<p>Fully remote. Build AI automation workflows.</p>",
+        "location": "US Only",
+    })
+    assert job.location == "US Only"
+    assert all(not result["passed_gate"] for result in score_job(job)["all"])
+    assert score_job(job)["best"]["reasons"] == ["удалёнка только из США"]
 
 
 class TestHtmlToText:

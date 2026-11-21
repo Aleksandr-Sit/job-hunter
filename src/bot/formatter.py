@@ -133,7 +133,8 @@ _UNKNOWN_PAY_CLAUSE = re.compile(
     r")(?: в (?:объявлении|вакансии|описании))?"
     r"|(?:доход|зарплату|условия оплаты|оплату) (?:необходимо |нужно |стоит )?уточнить"
     r"|(?:необходимо |нужно |стоит )?уточнить (?:доход|зарплату|условия оплаты|оплату)"
-    r"|(?:требуется|необходимо|нужно) уточнение (?:дохода|зарплаты|условий оплаты|оплаты))",
+    r"|(?:требуется|необходимо|нужно) уточнение "
+    r"(?:(?:чистого |фактического )?дохода|зарплаты|условий оплаты|оплаты))",
     re.IGNORECASE,
 )
 
@@ -178,6 +179,15 @@ _MISSING_INFORMATION = re.compile(
     re.IGNORECASE,
 )
 
+_EMPTY_CLARIFICATION = re.compile(
+    r"(?:(?:но|однако|при этом)\s+)?"
+    r"(?:(?:требуется|необходимо|нужно|стоит|следует)\s+)?"
+    r"(?:уточнить|уточнение|подтвердить|проверить)"
+    r"(?:\s+(?:это|их отсутствие|его отсутствие|е[её] отсутствие))?"
+    r"|(?:в (?:объявлении|вакансии|описании) )?указано",
+    re.IGNORECASE,
+)
+
 
 _LONG_SHIFT_NOTE = re.compile(
     r"\b(?:10|11|12)(?:\s*[–—−-]\s*(?:10|11|12))?\s*"
@@ -192,12 +202,11 @@ def _is_long_shift_note(note: str) -> bool:
 
 def _without_missing_information(note: str) -> str:
     """Не показывать заполнители об отсутствующих данных, в том числе из кэша."""
-    clauses = re.split(r"\s*[;,.!:–—]\s*", note)
+    note = note.strip()
+    clauses = re.split(r"\s*[;,.!?:–—]\s*", note)
     remaining = [c for c in clauses if c and not (
         _MISSING_INFORMATION.search(c) or _UNKNOWN_PAY_CLAUSE.fullmatch(c)
-        or re.fullmatch(
-            r"(?:(?:требуется|необходимо|нужно|стоит|следует)\s+)?"
-            r"(?:уточнить|уточнение)", c.strip(), re.I)
+        or _EMPTY_CLARIFICATION.fullmatch(c.strip())
     )]
     return "; ".join(remaining) if len(remaining) != len([c for c in clauses if c]) else note
 
