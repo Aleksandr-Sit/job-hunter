@@ -160,8 +160,10 @@ The target is not a cap; do not substitute figures from historical documents.
 Omit undisclosed salary from all text fields. Mention KPI/commission-dependent
 income only when the listing states it. A range maximum or potential
 bonus is not guaranteed pay. Do not invent exchange rates, net pay or tax rates.
-Remote work or office/hybrid in Samara is acceptable; relocation is actively
-considered in the locations listed in preferences, not only for exceptional offers.
+Remote work or office/hybrid in Samara is acceptable. The locations listed in
+preferences are relocation priorities. If an otherwise suitable role explicitly
+requires moving to a country outside those priorities, assess it on its other
+merits and call out the required move in watch_out.
 
 Evaluate each job listing against the candidate profile and score the fit from 0 to 100.
 
@@ -176,8 +178,9 @@ Score down for: requiring fluent/native English or C1/C2 (penalize harder for
 Support roles than Operations); voice/phone support IN ENGLISH or call-centre
 work; COLD calling, cold outbound prospecting, "active client search", field
 visits and heavy travel; leadership titles (Head/Director/Lead/VP/Chief/MLRO);
-office-only outside Samara or the approved relocation countries, unless remote
-work is explicitly available; for AI-automation roles, requiring years of professional ML/SWE
+office-only outside Samara or the priority relocation countries, unless remote
+work is explicitly available or the listing explicitly requires relocation to
+another country; for AI-automation roles, requiring years of professional ML/SWE
 experience, a CS degree, or research-scientist-level depth.
 
 SCHEDULE: 5/2 and daytime shifts are acceptable; flexibility is desirable, not
@@ -202,10 +205,24 @@ salary, work format, schedule, language, relocation or other conditions.
 Do not present the candidate's willingness to relocate or work remotely as
 evidence that the employer offers either. If there are no supported drawbacks,
 return watch_out: []; if there is no grounded advice, return recommendation: "".
-English in watch_out ONLY if the listing itself mentions English or a foreign
-language. Never write speculation like "English is not stated, but there may be
-international clients/meetings" — the candidate's English level is NOT a
-drawback of a listing that does not ask for it.
+Mention language in watch_out only when the listing describes a language
+qualification or actual use of the language at work. Optional courses, discounts
+and reimbursed lessons are benefits. Never infer a language requirement from them
+or ask about it in recommendation.
+Use watch_out for concrete drawbacks and restrictions, such as a stated
+residency restriction that affects eligibility. Omit generic checks like
+"verify that remote work is available to candidates in Russia" when the listing
+gives no such restriction. Do not repeat remote format or salary from why_fits
+in watch_out or recommendation. A specific drawback about either can be stated
+once if supported. Keep useful application advice when omitting these checks.
+Flag a skill gap when the listing makes the skill mandatory or uses it in a
+core day-to-day duty. State the duty or requirement and describe the evidence
+in the candidate profile. Say the skill is unconfirmed when the profile does
+not establish it. A tool mention or a minor optional skill is insufficient.
+For required relocation outside the candidate's priorities, name the
+destination when stated and explain what makes the move mandatory. A company
+address or optional relocation is insufficient. Put the issues most likely
+to affect the decision first.
 
 Do NOT penalise a job merely for being a sales role. Penalise only the cold
 outbound part described above. Sales on inbound leads, account management,
@@ -380,11 +397,20 @@ def _is_provider_dead(err: BaseException) -> bool:
 # поэтому страхуемся кодом: язык не упомянут в вакансии — пункт про него убираем.
 _EN_IN_LISTING = re.compile(r'англ|english|иностранн\w*\s+язык', re.IGNORECASE)
 _EN_IN_NOTE = re.compile(r'англ|english', re.IGNORECASE)
+_OPTIONAL_LANGUAGE_LEARNING = re.compile(
+    r'скидк|компенсац|возмещен|discount|reimburse', re.IGNORECASE
+)
 
 
 def _drop_unasked_english(watch_out: list, job: Optional[Job]) -> list:
-    """Убирает из watch_out пункты про английский, если вакансия о нём молчит."""
-    if job is None or _EN_IN_LISTING.search(f"{job.title}\n{job.description}"):
+    """Оставляет замечания о языке при его упоминании за пределами льгот."""
+    if job is None:
+        return watch_out
+    mentions = [
+        clause for clause in re.split(r"[\n.!?;]+", f"{job.title}\n{job.description}")
+        if _EN_IN_LISTING.search(clause)
+    ]
+    if any(not _OPTIONAL_LANGUAGE_LEARNING.search(clause) for clause in mentions):
         return watch_out
     return [w for w in watch_out if not _EN_IN_NOTE.search(str(w))]
 

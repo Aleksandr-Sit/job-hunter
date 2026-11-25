@@ -57,3 +57,11 @@ class TestEnglishWatchOut:
     def test_other_notes_untouched(self):
         out = _run(_job("Ночные смены 2/2"), ["Ночные смены 2/2"])
         assert out == ["Ночные смены 2/2"]
+
+    def test_discount_on_english_lessons_does_not_justify_warning(self):
+        out = _run(_job("Изучение английского языка со скидкой 60%"), NOTES)
+        assert out == [NOTES[0], NOTES[2]]
+
+    def test_discount_does_not_hide_separate_language_requirement(self):
+        out = _run(_job("Английский B1 для звонков. Курсы английского со скидкой."), NOTES)
+        assert out == NOTES
