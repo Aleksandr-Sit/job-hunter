@@ -65,6 +65,40 @@ def test_ai_warnings_are_not_repeated_or_replaced_with_filler():
     assert "Третье" in text
 
 
+@pytest.mark.parametrize("tax_status,tax_note,expected", [
+    (True, "Зарплата указана брутто", "до вычета"),
+    (False, "Доход указан на руки", "на руки"),
+])
+def test_salary_header_and_watch_do_not_repeat_pay_information(tax_status, tax_note, expected):
+    j = job("Выплачивается премия по KPI", salary_min=184000, salary_max=300000,
+            salary_currency="RUB", raw={"salary_gross": tax_status})
+    m = MatchResult("test", 82, [], [
+        f"{tax_note}, требуется уточнить чистый доход после налогов",
+        "необходимо уточнить размер и условия выплат",
+    ], "")
+    text = format_job_message(j, m)
+    assert f"184,000–300,000 RUB {expected}" in text
+    assert text.count("\n· ") == 1
+    assert "доход включает переменную часть" in text
+    assert tax_note not in text
+
+
+def test_salary_cleanup_keeps_payment_terms_and_other_risks():
+    j = job("Премия по KPI", salary_min=184000, raw={"salary_gross": True})
+    m = MatchResult("test", 82, [], [
+        "Зарплата указана брутто, требуется уточнить чистый доход после налогов; офис в Дубае",
+        "На испытательном сроке премии нет",
+    ], "")
+    text = format_job_message(j, m)
+    assert "· офис в Дубае" in text
+    assert "· На испытательном сроке премии нет" in text
+
+
+def test_tax_status_is_kept_when_missing_from_header():
+    m = MatchResult("test", 82, [], ["Зарплата указана брутто"], "")
+    assert "· Зарплата указана брутто" in format_job_message(job(salary_min=184000), m)
+
+
 def test_variable_pay_in_omitted_middle_is_visible():
     j = job("a" * 900 + " квартальная премия по KPI " + "b" * 900,
             salary_min=75000, salary_max=90000, salary_currency="RUB")

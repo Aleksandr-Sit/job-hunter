@@ -148,6 +148,23 @@ _VARIABLE_PAY_CLAUSE = re.compile(
     re.IGNORECASE,
 )
 
+_PAY_CLARIFICATION = re.compile(
+    r"(?:(?:требуется|необходимо|нужно|стоит|следует)\s+)?"
+    r"(?:уточнить|уточнение|проверить|подтвердить)\s+"
+    r"(?:(?:реальн\w*|фактическ\w*|чист\w*|гарантированн\w*|фиксированн\w*|"
+    r"итогов\w*)\s+)?"
+    r"(?:(?:размер\w*|услови\w*|структур\w*)(?:\s+и\s+(?:размер\w*|услови\w*))?\s+)?"
+    r"(?:доход\w*|зарплат\w*|оклад\w*|оплат\w*|выплат\w*|преми\w*|бонус\w*|"
+    r"переменн\w*\s+част\w*(?:\s+дохода)?)"
+    r"(?:\s+(?:на руки|после (?:вычета )?налогов))?",
+    re.IGNORECASE,
+)
+
+_PAY_TAX_STATUS = {
+    True: r"брутто|gross|до (?:вычета|удержания) налогов|до налогообложения",
+    False: r"нетто|net|на руки|после (?:вычета )?налогов",
+}
+
 
 _VARIABLE_PAY_TOPIC = re.compile(
     r"kpi|преми\w*|бонус\w*|комиссион\w*|процент\w*|переменн\w*\s+част\w*",
@@ -200,39 +217,35 @@ def _is_long_shift_note(note: str) -> bool:
     return bool(_LONG_SHIFT_NOTE.search(note) and re.search(r"смен\w*|shifts?", note, re.I))
 
 
-def _without_missing_information(note: str) -> str:
-    """Не показывать заполнители об отсутствующих данных, в том числе из кэша."""
+def _without_missing_information(note: str, salary_tax_status: str = "") -> str:
+    """Убирает заполнители и повтор налогового статуса из шапки."""
     note = note.strip()
     clauses = re.split(r"\s*[;,.!?:–—]\s*", note)
     remaining = [c for c in clauses if c and not (
         _MISSING_INFORMATION.search(c) or _UNKNOWN_PAY_CLAUSE.fullmatch(c)
+        or _PAY_CLARIFICATION.fullmatch(c)
         or _EMPTY_CLARIFICATION.fullmatch(c.strip())
+        or (salary_tax_status and re.fullmatch(
+            r"(?:зарплата|вилка|доход|оплата|сумма|суммы)(?:\s+указан[аы]?)?\s+"
+            rf"(?:{salary_tax_status})", c, re.I))
     )]
     return "; ".join(remaining) if len(remaining) != len([c for c in clauses if c]) else note
 
 
 def _watch_items(job: Job, warnings: list[str]) -> list[str]:
     items = listing_warnings(job)
-    unknown_pay = not job.salary_min and not job.salary_max
+    salary_tax_status = ""
+    if salary_range(job.salary_min, job.salary_max):
+        salary_tax_status = _PAY_TAX_STATUS.get(job.raw.get("salary_gross"), "")
     variable_pay = any("Есть KPI/премии/проценты" in item for item in items)
     seen = {" ".join(item.casefold().split()).rstrip(".") for item in items}
     added = 0
     for note in warnings:
         if added >= 2:
             break
-        note = _without_missing_information(note)
+        note = _without_missing_information(note, salary_tax_status)
         if variable_pay:
             note = _without_variable_pay_repetition(note)
-        # Удаляем только повторяющиеся части; например, офис в Дубае
-        # в том же пункте остаётся самостоятельным полезным замечанием.
-        if unknown_pay or variable_pay:
-            clauses = re.split(r"\s*[;,.!:–—]\s*", note)
-            remaining = [c for c in clauses if c and not (
-                (unknown_pay and _UNKNOWN_PAY_CLAUSE.fullmatch(c))
-                or (variable_pay and _VARIABLE_PAY_CLAUSE.fullmatch(c))
-            )]
-            if len(remaining) != len([c for c in clauses if c]):
-                note = "; ".join(remaining)
         key = " ".join(note.casefold().split()).rstrip(".")
         if key and key not in seen:
             # AI может уточнить тот же риск (например, добавить вопрос о ночах).
